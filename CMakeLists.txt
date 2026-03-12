@@ -23,18 +23,21 @@ project(LSLTemplate
     VERSION 2.0.0
     DESCRIPTION "LSL Application Template"
     HOMEPAGE_URL "https://github.com/labstreaminglayer/AppTemplate_cpp_qt"
-    LANGUAGES CXX
+    LANGUAGES C CXX
 )
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+include(FetchContent)
+
 # =============================================================================
 # Build Options
 # =============================================================================
 option(LSLTEMPLATE_BUILD_GUI "Build the GUI application (requires Qt6)" ON)
 option(LSLTEMPLATE_BUILD_CLI "Build the CLI application" ON)
+option(EMOTIVLSL_BUILD_EMOTIV "Build the Emotiv LSL application" ON)
 
 # =============================================================================
 # liblsl Dependency
@@ -55,7 +58,6 @@ if(LSL_INSTALL_ROOT)
 else()
     # Fetch liblsl from GitHub
     message(STATUS "Fetching liblsl ${LSL_FETCH_REF} from GitHub...")
-    include(FetchContent)
     set(LSL_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
     set(LSL_BUILD_TESTING OFF CACHE BOOL "" FORCE)
     FetchContent_Declare(liblsl
@@ -69,6 +71,37 @@ else()
         add_library(LSL::lsl ALIAS lsl)
     endif()
     include("${liblsl_SOURCE_DIR}/cmake/LSLCMake.cmake")
+endif()
+
+# =============================================================================
+# hidapi Dependency (for Emotiv USB HID access)
+# =============================================================================
+if(EMOTIVLSL_BUILD_EMOTIV)
+    FetchContent_Declare(
+        hidapi
+        GIT_REPOSITORY https://github.com/libusb/hidapi.git
+        GIT_TAG        hidapi-0.14.0
+        GIT_SHALLOW    ON
+        EXCLUDE_FROM_ALL
+    )
+    FetchContent_MakeAvailable(hidapi)
+
+    # tiny-AES-c (ECB decryption for Emotiv data stream)
+    # We only need the source files, not a built library, so we use SOURCE_DIR-only population.
+    if(POLICY CMP0169)
+        cmake_policy(SET CMP0169 OLD)
+    endif()
+    FetchContent_Declare(
+        tiny_aes
+        GIT_REPOSITORY https://github.com/kokke/tiny-AES-c.git
+        GIT_TAG        master
+        GIT_SHALLOW    ON
+        EXCLUDE_FROM_ALL
+    )
+    FetchContent_GetProperties(tiny_aes)
+    if(NOT tiny_aes_POPULATED)
+        FetchContent_Populate(tiny_aes)
+    endif()
 endif()
 
 # =============================================================================
@@ -119,6 +152,11 @@ if(LSLTEMPLATE_BUILD_GUI)
     add_subdirectory(src/gui)
 endif()
 
+# Emotiv LSL application
+if(EMOTIVLSL_BUILD_EMOTIV)
+    add_subdirectory(src/emotiv)
+endif()
+
 # =============================================================================
 # Installation
 # =============================================================================
@@ -152,6 +190,13 @@ if(LSLTEMPLATE_BUILD_GUI)
     install(TARGETS ${PROJECT_NAME}
         RUNTIME DESTINATION "${INSTALL_BINDIR}"
         BUNDLE DESTINATION "${INSTALL_BINDIR}"
+    )
+endif()
+
+# Install Emotiv LSL application
+if(EMOTIVLSL_BUILD_EMOTIV)
+    install(TARGETS emotiv_lsl
+        RUNTIME DESTINATION "${INSTALL_BINDIR}"
     )
 endif()
 

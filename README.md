@@ -1,11 +1,11 @@
-# LSL Application Template
+# Emotiv LSL C++
 
-This is the reference template for building Lab Streaming Layer (LSL) applications in C++ with Qt6. Use this as a starting point for creating new LSL-compatible applications.
+A high-performance C++ implementation of the `emotiv_lsl` server. It uses `hidapi`, `liblsl`, and `tiny-AES-c` to directly interface with Emotiv headsets via USB, decrypt the data streams, and publish them to LSL, without the overhead of Python.
 
 ## Features
 
 - **Modern CMake** (3.28+) with clean, documented structure
-- **4-tier liblsl discovery**: source, install_root, system, FetchContent
+- **Automatic dependency management** via CMake FetchContent (hidapi, liblsl, tiny-AES-c)
 - **CLI and GUI separation** with shared core library
 - **Qt6** for the GUI (with Qt5 intentionally dropped for simplicity)
 - **Cross-platform**: Linux, macOS, Windows
@@ -15,21 +15,27 @@ This is the reference template for building Lab Streaming Layer (LSL) applicatio
 ## Project Structure
 
 ```
-LSLTemplate/
+emotiv-lsl-cpp/
 ├── CMakeLists.txt           # Root build configuration
 ├── app.entitlements         # macOS network capabilities
 ├── LSLTemplate.cfg          # Default configuration file
 ├── src/
-│   ├── core/                # Qt-independent core library
+│   ├── emotiv/              # Emotiv LSL application (emotiv_lsl)
+│   │   ├── config.h             # Sampling rate constants
+│   │   ├── emotiv_base.h/cpp    # Base class: HID access, LSL outlets, decryption
+│   │   ├── emotiv_epoc_x.h/cpp  # Emotiv EPOC X headset implementation
+│   │   ├── main.cpp             # Entry point
+│   │   └── CMakeLists.txt
+│   ├── core/                # Qt-independent core library (LSL template)
 │   │   ├── include/lsltemplate/
 │   │   │   ├── Device.hpp       # Device interface
 │   │   │   ├── LSLOutlet.hpp    # LSL outlet wrapper
 │   │   │   ├── Config.hpp       # Configuration management
 │   │   │   └── StreamThread.hpp # Background streaming
 │   │   └── src/
-│   ├── cli/                 # Command-line application
+│   ├── cli/                 # Command-line application (LSL template)
 │   │   └── main.cpp
-│   └── gui/                 # Qt6 GUI application
+│   └── gui/                 # Qt6 GUI application (LSL template)
 │       ├── MainWindow.hpp/cpp
 │       ├── MainWindow.ui
 │       └── main.cpp
@@ -39,14 +45,14 @@ LSLTemplate/
     └── build.yml            # CI/CD workflow
 ```
 
-## Building
+## Building the Emotiv LSL Application
 
 ### Prerequisites
 
 - CMake 3.28 or later
-- C++20 compatible compiler
-- Qt6.8 (for GUI build)
-- liblsl (optional - will be fetched automatically if not found)
+- A C++17 compatible compiler (MSVC, GCC, or Clang)
+- Git (for FetchContent to download dependencies automatically)
+- Qt6.8 (only required for the GUI build; pass `-DLSLTEMPLATE_BUILD_GUI=OFF` to skip)
 
 ### Installing Qt 6.8 on Ubuntu
 
@@ -78,50 +84,42 @@ Alternatively, build CLI-only with `-DLSLTEMPLATE_BUILD_GUI=OFF` to avoid the Qt
 
 ```bash
 # Clone and build
-git clone https://github.com/labstreaminglayer/AppTemplate_cpp_qt.git
-cd AppTemplate_cpp_qt
+git clone https://github.com/CommanderPho/emotiv-lsl-cpp.git
+cd emotiv-lsl-cpp
 
-# Configure (liblsl will be fetched automatically)
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+# Configure — all dependencies (hidapi, liblsl, tiny-AES-c) are fetched automatically
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DLSLTEMPLATE_BUILD_GUI=OFF
 
 # Build
-cmake --build build --parallel
+cmake --build build --config Release --parallel
 
 # Install
 cmake --install build --prefix build/install
-
-# Package
-cd build && cpack
 ```
 
 ### Build Options
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `LSLTEMPLATE_BUILD_GUI` | ON | Build the GUI application |
+| `EMOTIVLSL_BUILD_EMOTIV` | ON | Build the Emotiv LSL application |
+| `LSLTEMPLATE_BUILD_GUI` | ON | Build the GUI application (requires Qt6) |
 | `LSLTEMPLATE_BUILD_CLI` | ON | Build the CLI application |
-| `LSL_FETCH_IF_MISSING` | ON | Auto-fetch liblsl from GitHub |
-| `LSL_FETCH_REF` | (see CMakeLists.txt) | liblsl git ref to fetch (tag, branch, or commit) |
-| `LSL_SOURCE_DIR` | - | Path to liblsl source (for development) |
-| `LSL_INSTALL_ROOT` | - | Path to installed liblsl |
+| `LSL_FETCH_REF` | v1.17.4 | liblsl git ref to fetch (tag, branch, or commit) |
+| `LSL_INSTALL_ROOT` | - | Path to a pre-installed liblsl |
+
+### Emotiv-only Build (no Qt required)
+
+```bash
+cmake -S . -B build -DLSLTEMPLATE_BUILD_GUI=OFF -DLSLTEMPLATE_BUILD_CLI=OFF
+cmake --build build --config Release
+```
 
 ### liblsl Discovery Priority
 
 The build system searches for liblsl in this order:
 
-1. **LSL_SOURCE_DIR** - Build from local source (for parallel liblsl development)
-2. **LSL_INSTALL_ROOT** - Explicit installation path
-3. **System** - Standard CMake search paths
-4. **FetchContent** - Automatic download from GitHub
-
-### CLI-Only Build
-
-For headless systems or servers:
-
-```bash
-cmake -S . -B build -DLSLTEMPLATE_BUILD_GUI=OFF
-cmake --build build
-```
+1. **LSL_INSTALL_ROOT** - Explicit installation path
+2. **FetchContent** - Automatic download from GitHub
 
 ### Building with Local liblsl
 
@@ -130,6 +128,22 @@ For parallel development with liblsl:
 ```bash
 cmake -S . -B build -DLSL_SOURCE_DIR=/path/to/liblsl
 ```
+
+## Running the Emotiv LSL Server
+
+Connect your Emotiv headset dongle before running. The server will automatically locate the device, set up LSL outlets, and begin streaming EEG, motion, and electrode quality data.
+
+**On Windows:**
+```powershell
+.\build\Release\emotiv_lsl.exe
+```
+
+**On Linux / macOS:**
+```bash
+./build/emotiv_lsl
+```
+
+You can use standard LSL tools like `bsl_stream_viewer` to visualize the incoming data streams.
 
 ## Usage
 
@@ -147,14 +161,6 @@ cmake -S . -B build -DLSL_SOURCE_DIR=/path/to/liblsl
 ./LSLTemplateCLI --name MyStream --rate 256 --channels 8
 ./LSLTemplateCLI --config myconfig.cfg
 ```
-
-## Customizing for Your Device
-
-1. **Fork/copy this template**
-2. **Rename the project** in `CMakeLists.txt`
-3. **Implement your device class** by deriving from `IDevice` in `src/core/include/lsltemplate/Device.hpp`
-4. **Update the GUI** for device-specific settings in `src/gui/MainWindow.ui`
-5. **Update configuration** fields in `src/core/include/lsltemplate/Config.hpp`
 
 ## macOS Code Signing
 
