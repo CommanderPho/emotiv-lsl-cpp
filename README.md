@@ -111,7 +111,11 @@ cmake --install build --prefix build/install
 
 ```bash
 cmake -S . -B build -DLSLTEMPLATE_BUILD_GUI=OFF -DLSLTEMPLATE_BUILD_CLI=OFF
-cmake --build build --config Release
+# Build
+cmake --build build --config Release --parallel
+# Install
+cmake --install build --prefix build/install
+
 ```
 
 ### liblsl Discovery Priority
