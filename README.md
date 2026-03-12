@@ -80,34 +80,6 @@ export LD_LIBRARY_PATH=~/Qt/6.8.3/gcc_64/lib:$LD_LIBRARY_PATH
 
 Alternatively, build CLI-only with `-DLSLTEMPLATE_BUILD_GUI=OFF` to avoid the Qt dependency.
 
-### Single-command build and run
-
-From the repo root, one command can configure, build, install, and start the server. Dependencies (liblsl, hidapi, tiny-AES-c) are fetched automatically. Requires CMake 3.25+ and PowerShell Core (`pwsh`) for the run script.
-
-**Windows (PowerShell):**
-
-```powershell
-# Build self-contained install only
-cmake --workflow --preset emotiv
-cmake --install build --config Release
-
-# Build and start collecting data (single command)
-pwsh ./run.ps1
-```
-
-**Linux / macOS:**
-
-```bash
-# Build self-contained install only
-cmake --workflow --preset emotiv
-cmake --install build --config Release
-
-# Build and start collecting data (single command)
-pwsh ./run.ps1
-```
-
-The preset builds only `emotiv_lsl` (no Qt/CLI). The executable and bundled LSL library end up in `build/install/`.
-
 ### Quick Start
 
 ```bash
@@ -235,6 +207,30 @@ For automated signing and notarization, the workflow expects these secrets from 
 1. Go to Organization Settings → Secrets and variables → Actions
 2. For each secret, click to edit and under "Repository access" select the repositories that need access
 
-## License
+### Single-command build and run
 
-MIT License - see LICENSE
+From the repo root, one command can configure, build, install, and start the server. Dependencies (liblsl, hidapi, tiny-AES-c) are fetched automatically. Requires CMake 3.25+ and PowerShell Core (`pwsh`) for the run script.
+
+**Windows (PowerShell):**
+
+```powershell
+# Build self-contained install only
+cmake --workflow --preset emotiv
+cmake --install build --config Release
+
+# Build and start collecting data (single command)
+pwsh ./run.ps1
+```
+
+**Linux / macOS:**
+
+```bash
+# Build self-contained install only
+cmake --workflow --preset emotiv
+cmake --install build --config Release
+
+# Build and start collecting data (single command)
+pwsh ./run.ps1
+```
+
+The preset builds only `emotiv_lsl` (no Qt/CLI). The executable and bundled LSL library end up in `build/install/`.
