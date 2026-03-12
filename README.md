@@ -223,6 +223,7 @@ pwsh ./run.ps1
 ```
 
 **Linux / macOS:**
+`brew install --cask powershell`
 
 ```bash
 # Build self-contained install only
