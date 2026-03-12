@@ -7,3 +7,4 @@ ui_*.h
 /out/
 .DS_Store
 .idea
+desktop.ini

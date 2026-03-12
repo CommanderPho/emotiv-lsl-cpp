@@ -1,0 +1,38 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": { "major": 3, "minor": 25, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "emotiv",
+      "displayName": "Emotiv LSL (Release, no Qt/CLI)",
+      "description": "Builds only the emotiv_lsl target in Release mode. All deps fetched automatically.",
+      "binaryDir": "${sourceDir}/build",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_INSTALL_PREFIX": "${sourceDir}/build/install",
+        "LSLTEMPLATE_BUILD_GUI": "OFF",
+        "LSLTEMPLATE_BUILD_CLI": "OFF",
+        "EMOTIVLSL_BUILD_EMOTIV": "ON"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "emotiv",
+      "displayName": "Emotiv LSL (Release)",
+      "configurePreset": "emotiv",
+      "configuration": "Release",
+      "jobs": 0
+    }
+  ],
+  "workflowPresets": [
+    {
+      "name": "emotiv",
+      "displayName": "Configure → Build (emotiv_lsl)",
+      "steps": [
+        { "type": "configure", "name": "emotiv" },
+        { "type": "build",     "name": "emotiv" }
+      ]
+    }
+  ]
+}
