@@ -80,11 +80,16 @@ if(EMOTIVLSL_BUILD_EMOTIV)
     FetchContent_Declare(
         hidapi
         GIT_REPOSITORY https://github.com/libusb/hidapi.git
-        GIT_TAG        hidapi-0.14.0
+        GIT_TAG        hidapi-0.15.0
         GIT_SHALLOW    ON
         EXCLUDE_FROM_ALL
     )
+    # hidapi uses cmake_minimum_required(VERSION 3.1.3), which CMake 3.31+
+    # no longer supports (compatibility with < 3.5 was removed). Setting
+    # CMAKE_POLICY_VERSION_MINIMUM suppresses the error for sub-projects.
+    set(CMAKE_POLICY_VERSION_MINIMUM "3.5")
     FetchContent_MakeAvailable(hidapi)
+    unset(CMAKE_POLICY_VERSION_MINIMUM)
 
     # tiny-AES-c (ECB decryption for Emotiv data stream)
     # We only need the source files, not a built library, so we use SOURCE_DIR-only population.
