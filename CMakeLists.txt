@@ -272,6 +272,15 @@ if(APPLE)
             FRAMEWORK "Frameworks/lsl.framework"
         )
     endif()
+
+    if(EMOTIVLSL_BUILD_EMOTIV)
+        LSL_codesign(
+            TARGET emotiv_lsl
+            DESTINATION "${INSTALL_BINDIR}"
+            ENTITLEMENTS "${CMAKE_CURRENT_SOURCE_DIR}/app.entitlements"
+            FRAMEWORK "Frameworks/lsl.framework"
+        )
+    endif()
 endif()
 
 # =============================================================================
