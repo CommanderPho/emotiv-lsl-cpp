@@ -21,7 +21,7 @@ target_compile_definitions(emotiv_lsl PRIVATE
 )
 
 if(WIN32)
-    target_link_libraries(emotiv_lsl PRIVATE hidapi_winapi LSL::lsl)
+    target_link_libraries(emotiv_lsl PRIVATE hidapi_winapi LSL::lsl xdfwriter LSLTemplate::core)
 
     add_custom_command(TARGET emotiv_lsl POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
@@ -37,8 +37,15 @@ if(WIN32)
         COMMAND_EXPAND_LISTS
         COMMENT "Copying lsl DLL for emotiv_lsl"
     )
+    add_custom_command(TARGET emotiv_lsl POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:xdfwriter>
+            $<TARGET_FILE_DIR:emotiv_lsl>
+        COMMAND_EXPAND_LISTS
+        COMMENT "Copying xdfwriter DLL for emotiv_lsl"
+    )
 elseif(APPLE)
-    target_link_libraries(emotiv_lsl PRIVATE hidapi_darwin LSL::lsl)
+    target_link_libraries(emotiv_lsl PRIVATE hidapi_darwin LSL::lsl xdfwriter LSLTemplate::core)
 else()
-    target_link_libraries(emotiv_lsl PRIVATE hidapi_libusb LSL::lsl)
+    target_link_libraries(emotiv_lsl PRIVATE hidapi_libusb LSL::lsl xdfwriter LSLTemplate::core)
 endif()

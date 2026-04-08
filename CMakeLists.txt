@@ -144,6 +144,9 @@ LSL_configure_rpath()
 # Targets
 # =============================================================================
 
+# xdfwriter library
+add_subdirectory(xdfwriter)
+
 # Core library (Qt-independent, shared between CLI and GUI)
 add_subdirectory(src/core)
 
@@ -209,6 +212,13 @@ if(EMOTIVLSL_BUILD_EMOTIV)
         install(TARGETS hidapi_darwin LIBRARY DESTINATION "${INSTALL_BINDIR}")
     endif()
 endif()
+
+# Install xdfwriter
+install(TARGETS xdfwriter
+    RUNTIME DESTINATION "${INSTALL_BINDIR}"
+    LIBRARY DESTINATION "${INSTALL_LIBDIR}"
+    ARCHIVE DESTINATION "${INSTALL_LIBDIR}"
+)
 
 # Install config file
 set(_config_dest "${INSTALL_DATADIR}")

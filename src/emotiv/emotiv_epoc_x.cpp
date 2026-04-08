@@ -2,8 +2,8 @@
 #include "config.h"
 #include <iostream>
 
-EmotivEpocX::EmotivEpocX(bool enable_motion, bool enable_quality)
-    : EmotivBase(enable_motion, enable_quality) {
+EmotivEpocX::EmotivEpocX(bool enable_motion, bool enable_quality, const std::string& record_file)
+    : EmotivBase(enable_motion, enable_quality, record_file) {
     device_name = "Emotiv Epoc X";
     KeyModel = 8;
 }

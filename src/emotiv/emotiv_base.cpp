@@ -5,9 +5,10 @@
 #include <sstream>
 #include <stdexcept>
 #include <chrono>
+#include "recording.h"
 
-EmotivBase::EmotivBase(bool enable_motion, bool enable_quality)
-    : enable_motion_data(enable_motion), enable_electrode_quality_stream(enable_quality) {
+EmotivBase::EmotivBase(bool enable_motion, bool enable_quality, const std::string& record_file)
+    : enable_motion_data(enable_motion), enable_electrode_quality_stream(enable_quality), record_file(record_file) {
 }
 
 EmotivBase::~EmotivBase() {
@@ -97,19 +98,19 @@ std::vector<std::string> EmotivBase::eeg_quality_channel_names() const {
 }
 
 lsl::stream_info EmotivBase::get_lsl_outlet_eeg_stream_info() {
-    lsl::stream_info info("Epoc X", "EEG", eeg_channel_names.size(), SRATE, lsl::cf_float32, get_lsl_source_id());
+    lsl::stream_info info("Epoc X", "EEG", eeg_channel_names.size(), SRATE, lsl::cf_float32, get_lsl_source_id() + "_EEG");
     info = add_lsl_outlet_info_common(info);
     return info;
 }
 
 lsl::stream_info EmotivBase::get_lsl_outlet_motion_stream_info() {
-    lsl::stream_info info("Epoc X Motion", "SIGNAL", 6, MOTION_SRATE, lsl::cf_float32, get_lsl_source_id());
+    lsl::stream_info info("Epoc X Motion", "SIGNAL", 6, MOTION_SRATE, lsl::cf_float32, get_lsl_source_id() + "_Motion");
     info = add_lsl_outlet_info_common(info);
     return info;
 }
 
 lsl::stream_info EmotivBase::get_lsl_outlet_electrode_quality_stream_info() {
-    lsl::stream_info info("Epoc X eQuality", "RAW", eeg_channel_names.size(), SRATE, lsl::cf_float32, get_lsl_source_id());
+    lsl::stream_info info("Epoc X eQuality", "RAW", eeg_channel_names.size(), SRATE, lsl::cf_float32, get_lsl_source_id() + "_Quality");
     info = add_lsl_outlet_info_common(info);
     return info;
 }
@@ -156,6 +157,18 @@ void EmotivBase::main_loop() {
     std::unique_ptr<lsl::stream_outlet> eeg_outlet;
     std::unique_ptr<lsl::stream_outlet> motion_outlet;
     std::unique_ptr<lsl::stream_outlet> eeg_quality_outlet;
+
+    std::unique_ptr<recording> recorder;
+    if (!record_file.empty()) {
+        std::string base_id = get_lsl_source_id();
+        std::vector<std::string> watchfor = { 
+            "source_id='" + base_id + "_EEG'",
+            "source_id='" + base_id + "_Motion'",
+            "source_id='" + base_id + "_Quality'"
+        };
+        std::map<std::string, int> syncOpt;
+        recorder = std::make_unique<recording>(record_file, std::vector<lsl::stream_info>(), watchfor, syncOpt, true);
+    }
 
     uint32_t packet_count = 0;
     std::vector<uint8_t> buffer(READ_SIZE);
@@ -205,6 +218,11 @@ void EmotivBase::main_loop() {
             }
         }
     }
+    
+    if (recorder) {
+        recorder->requestStop(); // signal the internal threads
+    }
+
     hid_close(device);
     hid_exit();
 }

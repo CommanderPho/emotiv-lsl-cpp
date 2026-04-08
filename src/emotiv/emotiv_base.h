@@ -22,7 +22,7 @@ struct EmotivData {
 
 class EmotivBase {
 public:
-    EmotivBase(bool enable_motion_data = false, bool enable_electrode_quality_stream = false);
+    EmotivBase(bool enable_motion_data = false, bool enable_electrode_quality_stream = false, const std::string& record_file = "");
     virtual ~EmotivBase();
 
     void main_loop();
@@ -38,6 +38,7 @@ protected:
     bool is_reverse_engineer_mode = false;
     bool enable_electrode_quality_stream = false;
     bool enable_motion_data = false;
+    std::string record_file = "";
 
     // Cryptography state
     struct AES_ctx ctx;

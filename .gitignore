@@ -8,3 +8,5 @@ ui_*.h
 .DS_Store
 .idea
 desktop.ini
+.specstory
+*.xdf
