@@ -6,6 +6,7 @@
 #include <stdexcept>
 #include <chrono>
 #include <thread>
+#include <filesystem>
 #include "recording.h"
 #include <cstdint>
 
@@ -249,6 +250,12 @@ void EmotivBase::main_loop() {
                         std::cout << " Motion";
                     }
                     std::cout << std::endl;
+                    if (recorder) {
+                        std::error_code ec;
+                        std::filesystem::path abs_path = std::filesystem::absolute(record_file);
+                        std::filesystem::path canon = std::filesystem::weakly_canonical(abs_path, ec);
+                        std::cout << "XDF recording writing to: " << (ec ? abs_path.string() : canon.string()) << std::endl;
+                    }
                 }
 
                 if (result.has_quality && enable_electrode_quality_stream) {
@@ -288,6 +295,7 @@ void EmotivBase::main_loop() {
 
         if (recorder) {
             recorder->requestStop();
+            recorder.reset();
         }
 
         hid_close(device);

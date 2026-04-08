@@ -6,6 +6,7 @@
 #include <chrono>
 #include <condition_variable>
 #include <iostream>
+#include <string>
 #include <list>
 #include <lsl_cpp.h>
 #include <map>
@@ -77,6 +78,7 @@ public:
 private:
 	// the file stream
 	XDFWriter file_; // the file output stream
+	std::string output_path_; // same path as passed to constructor (for logging on close)
 	// static information
 	bool offsets_enabled_; // whether to collect time offset information alongside with the stream
 						   // contents
