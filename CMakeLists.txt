@@ -206,6 +206,7 @@ if(EMOTIVLSL_BUILD_EMOTIV)
     install(TARGETS emotiv_lsl
         RUNTIME DESTINATION "${INSTALL_BINDIR}"
     )
+    install(FILES src/emotiv/lsl_api.cfg DESTINATION "${INSTALL_BINDIR}")
     if(WIN32)
         install(TARGETS hidapi_winapi RUNTIME DESTINATION "${INSTALL_BINDIR}")
     elseif(APPLE)

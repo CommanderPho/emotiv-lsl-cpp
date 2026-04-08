@@ -5,6 +5,7 @@ add_executable(emotiv_lsl
     main.cpp
     emotiv_base.cpp
     emotiv_epoc_x.cpp
+    emotiv_lsl_log_config.cpp
     "${tiny_aes_SOURCE_DIR}/aes.c"
 )
 
@@ -49,3 +50,10 @@ elseif(APPLE)
 else()
     target_link_libraries(emotiv_lsl PRIVATE hidapi_libusb LSL::lsl xdfwriter LSLTemplate::core)
 endif()
+
+add_custom_command(TARGET emotiv_lsl POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/lsl_api.cfg"
+        $<TARGET_FILE_DIR:emotiv_lsl>
+    COMMENT "Copying lsl_api.cfg (quiet liblsl logging) for emotiv_lsl"
+)

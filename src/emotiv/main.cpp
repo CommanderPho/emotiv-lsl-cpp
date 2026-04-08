@@ -1,7 +1,9 @@
 #include <iostream>
 #include "emotiv_epoc_x.h"
+#include "emotiv_lsl_log_config.h"
 
 int main(int argc, char* argv[]) {
+    emotiv_set_lslapicfg_from_exe_dir();
     try {
         bool enable_quality = true;
         bool enable_motion = true;
