@@ -1,6 +1,9 @@
+#include <filesystem>
 #include <iostream>
+#include <optional>
 #include "emotiv_epoc_x.h"
 #include "emotiv_lsl_log_config.h"
+#include "lab_recorder_cfg.h"
 #include "lsltemplate/Config.hpp"
 
 int main(int argc, char* argv[]) {
@@ -9,11 +12,25 @@ int main(int argc, char* argv[]) {
         bool enable_quality = true;
         bool enable_motion = true;
         std::string record_file = "";
+        std::optional<std::filesystem::path> explicit_labrec_cfg;
 
         for (int i = 1; i < argc; ++i) {
             std::string arg = argv[i];
             if (arg == "--record" && i + 1 < argc) {
                 record_file = argv[++i];
+            } else if ((arg == "-c" || arg == "--config") && i + 1 < argc) {
+                explicit_labrec_cfg = std::filesystem::path(argv[++i]);
+            }
+        }
+
+        if (record_file.empty()) {
+            const auto exe_dir = lsltemplate::ConfigManager::executableDirectory();
+            const auto lr_cfg = find_lab_recorder_config_file(explicit_labrec_cfg, exe_dir);
+            if (lr_cfg) {
+                const auto resolved = resolve_lab_recorder_output_path(*lr_cfg);
+                if (resolved) {
+                    record_file = resolved->string();
+                }
             }
         }
 
@@ -35,14 +52,14 @@ int main(int argc, char* argv[]) {
         if (!record_file.empty()) {
             std::cout << "Recording natively to XDF file: " << record_file << std::endl;
         }
-        
+
         EmotivEpocX epocX(enable_motion, enable_quality, record_file);
-        
+
         epocX.main_loop();
     } catch (const std::exception& e) {
         std::cerr << "Error: " << e.what() << std::endl;
         return 1;
     }
-    
+
     return 0;
 }

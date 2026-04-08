@@ -159,10 +159,11 @@ You can use standard LSL tools like `bsl_stream_viewer` to visualize the incomin
 
 ### XDF recording
 
-- **`--record <path>`** — Writes a LabRecorder-style XDF next to the other bundled DLLs. This path **always wins** if you pass it on the command line.
-- **Config-driven default path** — If you omit `--record`, `emotiv_lsl` looks for `LSLTemplate.cfg` (current working directory, then the executable directory, then the usual platform config location). In the **`[Recording]`** section, set `enabled=1` to turn on automatic filenames. Files go under `directory` relative to the executable unless `directory` is an absolute path. The **`filename_template`** supports placeholders: `{stream_name}` (from `[Stream]` `name`), `{basename}` (optional `basename=` override), `{date}` (local `YYYY-MM-DD`), and `{time}` (local `HH-MM-SS`).
+- **`--record <path>`** — Writes an XDF at the given path. This **always wins** over config-based paths.
+- **`-c` / `--config <file>`** — Optional explicit [App-LabRecorder](https://github.com/labstreaminglayer/App-LabRecorder)-style INI (same keys as `LabRecorder.cfg`). If omitted, `emotiv_lsl` searches for **`LabRecorder.cfg`** in the same order as App-LabRecorder: current working directory, then typical per-user config/data locations for `LabRecorder`, then the directory containing `emotiv_lsl`. It reads **`StudyRoot`**, **`PathTemplate`**, or **`StorageLocation`** (same mutual-exclusion rules as LabRecorder) and resolves `%` placeholders such as `%datetime`, `%datetime_eeg`, `%hostname`, `%date`, `%time`, BIDS fields (`%p`, `%s`, `%b`, `%a`, `%m`, `%r`), and legacy `%n` / `%b`, picking the first free filename when a counter is used.
+- **Fallback** — If no usable LabRecorder path is found, `emotiv_lsl` may use **`LSLTemplate.cfg`** and its optional **`[Recording]`** block (`enabled=1`, `directory`, `filename_template` with `{stream_name}`, `{basename}`, `{date}`, `{time}`) as before.
 
-Example: from the repo root, after editing `LSLTemplate.cfg` so `[Recording]` has `enabled=1`, run `.\build\src\emotiv\Release\emotiv_lsl.exe` and recordings appear under `recordings\` next to the executable (for example `recordings\LSLTemplate_2026-04-08_14-30-00.xdf` with the default template).
+Example: place a valid `LabRecorder.cfg` next to `emotiv_lsl.exe` or in `%LOCALAPPDATA%\LabRecorder\`, or pass `-c C:\path\LabRecorder.cfg`.
 
 ## Usage
 

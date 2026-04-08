@@ -4,16 +4,16 @@ overview: Make `emotiv_lsl` discover and parse **`LabRecorder.cfg` in App-LabRec
 todos:
   - id: labrec-find-parse
     content: "Add lab_recorder_cfg: find LabRecorder.cfg (App-LabRecorder search order), INI parse StudyRoot/PathTemplate/StorageLocation"
-    status: pending
+    status: completed
   - id: labrec-expand
     content: Implement % placeholder expansion aligned with upstream replaceFilename (+ datetime/hostname variants)
-    status: pending
+    status: completed
   - id: main-wireup-fallback
     content: "Wire main.cpp: --record, optional -c, LabRecorder path, then LSLTemplate [Recording] fallback"
-    status: pending
+    status: completed
   - id: readme-cleanup
     content: Update README and adjust LSLTemplate.cfg comments / [Recording] section per chosen fallback policy
-    status: pending
+    status: completed
 isProject: false
 ---
 

@@ -3,6 +3,7 @@
 
 add_executable(emotiv_lsl
     main.cpp
+    lab_recorder_cfg.cpp
     emotiv_base.cpp
     emotiv_epoc_x.cpp
     emotiv_lsl_log_config.cpp
@@ -22,7 +23,7 @@ target_compile_definitions(emotiv_lsl PRIVATE
 )
 
 if(WIN32)
-    target_link_libraries(emotiv_lsl PRIVATE hidapi_winapi LSL::lsl xdfwriter LSLTemplate::core)
+    target_link_libraries(emotiv_lsl PRIVATE hidapi_winapi LSL::lsl xdfwriter LSLTemplate::core shell32)
 
     add_custom_command(TARGET emotiv_lsl POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
