@@ -1,6 +1,7 @@
 #include <iostream>
 #include "emotiv_epoc_x.h"
 #include "emotiv_lsl_log_config.h"
+#include "lsltemplate/Config.hpp"
 
 int main(int argc, char* argv[]) {
     emotiv_set_lslapicfg_from_exe_dir();
@@ -13,6 +14,20 @@ int main(int argc, char* argv[]) {
             std::string arg = argv[i];
             if (arg == "--record" && i + 1 < argc) {
                 record_file = argv[++i];
+            }
+        }
+
+        if (record_file.empty()) {
+            const auto cfg_path = lsltemplate::ConfigManager::findConfigFile("LSLTemplate.cfg");
+            if (!cfg_path.empty()) {
+                const auto cfg = lsltemplate::ConfigManager::load(cfg_path);
+                if (cfg) {
+                    auto exe_dir = lsltemplate::ConfigManager::executableDirectory();
+                    const auto resolved = lsltemplate::ConfigManager::resolveRecordingOutputPath(*cfg, exe_dir);
+                    if (resolved) {
+                        record_file = resolved->string();
+                    }
+                }
             }
         }
 
