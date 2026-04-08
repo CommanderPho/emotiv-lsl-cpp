@@ -5,7 +5,15 @@
 #include <sstream>
 #include <stdexcept>
 #include <chrono>
+#include <thread>
 #include "recording.h"
+#include <cstdint>
+
+namespace {
+constexpr auto kReconnectInterval = std::chrono::seconds(2);
+constexpr int kHidReadTimeoutMs = 500;
+constexpr auto kWaitingStatusInterval = std::chrono::seconds(4);
+}
 
 EmotivBase::EmotivBase(bool enable_motion, bool enable_quality, const std::string& record_file)
     : enable_motion_data(enable_motion), enable_electrode_quality_stream(enable_quality), record_file(record_file) {
@@ -24,16 +32,11 @@ std::string EmotivBase::get_lsl_source_id() {
     return ss.str();
 }
 
-hid_device* EmotivBase::get_hid_device() {
-    if (hid_init() != 0) {
-        throw std::runtime_error("Failed to initialize hidapi");
-    }
-
+hid_device* EmotivBase::find_open_emotiv_device() {
     struct hid_device_info *devs, *cur_dev;
     devs = hid_enumerate(0x1234, 0x0000); // Vendor ID 0x1234 for Emotiv
     cur_dev = devs;
     hid_device* target_device = nullptr;
-    std::string target_path = "";
 
     while (cur_dev) {
         std::wstring mfg(cur_dev->manufacturer_string ? cur_dev->manufacturer_string : L"");
@@ -43,7 +46,6 @@ hid_device* EmotivBase::get_hid_device() {
                     std::wstring serial_ws(cur_dev->serial_number);
                     serial_number = std::string(serial_ws.begin(), serial_ws.end());
                 }
-                target_path = cur_dev->path;
                 target_device = hid_open_path(cur_dev->path);
                 if (target_device) {
                     break;
@@ -52,7 +54,7 @@ hid_device* EmotivBase::get_hid_device() {
         }
         cur_dev = cur_dev->next;
     }
-    
+
     // In case Vendor ID is different or 0x1243 etc., we enumerate all and check mfg string
     if (!target_device) {
         hid_free_enumeration(devs);
@@ -75,8 +77,16 @@ hid_device* EmotivBase::get_hid_device() {
     }
 
     hid_free_enumeration(devs);
+    return target_device;
+}
+
+hid_device* EmotivBase::get_hid_device() {
+    if (hid_init() != 0) {
+        throw std::runtime_error("Failed to initialize hidapi");
+    }
+    hid_device* target_device = find_open_emotiv_device();
     if (!target_device) {
-        throw std::runtime_error("Emotiv headset not found");
+        throw std::runtime_error("Emotiv USB receiver not found");
     }
     return target_device;
 }
@@ -151,78 +161,141 @@ std::vector<double> EmotivBase::extractQualityValues(const std::vector<uint8_t>&
 }
 
 void EmotivBase::main_loop() {
-    hid_device* device = get_hid_device();
-    std::cout << "Connected to Emotiv device: " << device_name << std::endl;
-    
+    if (hid_init() != 0) {
+        throw std::runtime_error("Failed to initialize hidapi");
+    }
+
     std::unique_ptr<lsl::stream_outlet> eeg_outlet;
     std::unique_ptr<lsl::stream_outlet> motion_outlet;
     std::unique_ptr<lsl::stream_outlet> eeg_quality_outlet;
-
     std::unique_ptr<recording> recorder;
-    if (!record_file.empty()) {
-        std::string base_id = get_lsl_source_id();
-        std::vector<std::string> watchfor = { 
-            "source_id='" + base_id + "_EEG'",
-            "source_id='" + base_id + "_Motion'",
-            "source_id='" + base_id + "_Quality'"
-        };
-        std::map<std::string, int> syncOpt;
-        recorder = std::make_unique<recording>(record_file, std::vector<lsl::stream_info>(), watchfor, syncOpt, true);
-    }
-
-    uint32_t packet_count = 0;
-    std::vector<uint8_t> buffer(READ_SIZE);
 
     while (true) {
-        int bytes_read = hid_read(device, buffer.data(), READ_SIZE);
-        if (bytes_read < 0) {
-            std::cerr << "Disconnected or read error" << std::endl;
-            break;
-        } else if (bytes_read == 0) {
-            continue; // No data yet
-        }
-
-        std::vector<uint8_t> data(buffer.begin(), buffer.begin() + bytes_read);
-        packet_count++;
-
-        if (validate_data(data)) {
-            EmotivData result = decode_data(data);
-            
-            if (result.has_quality && enable_electrode_quality_stream) {
-                if (!eeg_quality_outlet) {
-                    lsl::stream_info info = get_lsl_outlet_electrode_quality_stream_info();
-                    eeg_quality_outlet = std::make_unique<lsl::stream_outlet>(info);
-                    std::cout << "Set up EEG Sensor Quality outlet!" << std::endl;
-                }
-                eeg_quality_outlet->push_sample(result.quality_data);
-            }
-
-            if (result.has_motion && enable_motion_data) {
-                if (!has_motion_data) {
-                    has_motion_data = true;
-                    std::cout << "Got first motion data!" << std::endl;
-                }
-                if (!motion_outlet) {
-                    lsl::stream_info info = get_lsl_outlet_motion_stream_info();
-                    motion_outlet = std::make_unique<lsl::stream_outlet>(info);
-                    std::cout << "Set up motion outlet!" << std::endl;
-                }
-                motion_outlet->push_sample(result.motion_data);
-            } else if (result.has_eeg) {
-                if (!eeg_outlet) {
-                    lsl::stream_info info = get_lsl_outlet_eeg_stream_info();
-                    eeg_outlet = std::make_unique<lsl::stream_outlet>(info);
-                    std::cout << "Set up EEG outlet! Channels: " << result.eeg_data.size() << std::endl;
-                }
-                eeg_outlet->push_sample(result.eeg_data);
+        hid_device* device = nullptr;
+        while (!device) {
+            device = find_open_emotiv_device();
+            if (!device) {
+                std::cout << "No Emotiv USB receiver detected (dongle unplugged or not enumerated), retrying..." << std::endl;
+                std::this_thread::sleep_for(kReconnectInterval);
             }
         }
-    }
-    
-    if (recorder) {
-        recorder->requestStop(); // signal the internal threads
+
+        std::cout << "USB receiver connected (" << device_name << ") — waiting for headset (EEG/motion)";
+        if (!serial_number.empty()) {
+            std::cout << " [serial: " << serial_number << "]";
+        }
+        std::cout << std::endl;
+
+        if (!record_file.empty() && !recorder) {
+            std::string base_id = get_lsl_source_id();
+            std::vector<std::string> watchfor = {
+                "source_id='" + base_id + "_EEG'",
+                "source_id='" + base_id + "_Motion'",
+                "source_id='" + base_id + "_Quality'"
+            };
+            std::map<std::string, int> syncOpt;
+            recorder = std::make_unique<recording>(record_file, std::vector<lsl::stream_info>(), watchfor, syncOpt, true);
+        }
+
+        uint32_t packet_count = 0;
+        std::vector<uint8_t> buffer(READ_SIZE);
+        bool saw_streaming = false;
+        std::uint64_t raw_hid_reports = 0;
+        auto last_waiting_log = std::chrono::steady_clock::now();
+
+        auto print_waiting_status_if_due = [&]() {
+            if (saw_streaming) {
+                return;
+            }
+            auto now = std::chrono::steady_clock::now();
+            if (now - last_waiting_log < kWaitingStatusInterval) {
+                return;
+            }
+            last_waiting_log = now;
+            std::cout << "Still waiting for headset data";
+            if (raw_hid_reports == 0) {
+                std::cout << " — no USB HID reports yet (turn on / pair the headset)";
+            } else {
+                std::cout << " — " << raw_hid_reports << " USB HID report(s) received but no EEG/motion yet; check headset power/pairing";
+            }
+            std::cout << std::endl;
+        };
+
+        while (true) {
+            int bytes_read = hid_read_timeout(device, buffer.data(), READ_SIZE, kHidReadTimeoutMs);
+            if (bytes_read < 0) {
+                std::cerr << "Disconnected or read error, reconnecting..." << std::endl;
+                break;
+            }
+            if (bytes_read == 0) {
+                print_waiting_status_if_due();
+                continue;
+            }
+
+            std::vector<uint8_t> data(buffer.begin(), buffer.begin() + bytes_read);
+            packet_count++;
+            raw_hid_reports++;
+
+            if (validate_data(data)) {
+                EmotivData result = decode_data(data);
+                const bool headset_stream = result.has_eeg || (result.has_motion && enable_motion_data);
+                if (headset_stream && !saw_streaming) {
+                    saw_streaming = true;
+                    std::cout << "Streaming:";
+                    if (result.has_eeg) {
+                        std::cout << " EEG";
+                    }
+                    if (result.has_motion && enable_motion_data) {
+                        std::cout << " Motion";
+                    }
+                    std::cout << std::endl;
+                }
+
+                if (result.has_quality && enable_electrode_quality_stream) {
+                    if (!eeg_quality_outlet) {
+                        lsl::stream_info info = get_lsl_outlet_electrode_quality_stream_info();
+                        eeg_quality_outlet = std::make_unique<lsl::stream_outlet>(info);
+                        std::cout << "Set up EEG Sensor Quality outlet!" << std::endl;
+                    }
+                    eeg_quality_outlet->push_sample(result.quality_data);
+                }
+
+                if (result.has_motion && enable_motion_data) {
+                    if (!has_motion_data) {
+                        has_motion_data = true;
+                    }
+                    if (!motion_outlet) {
+                        lsl::stream_info info = get_lsl_outlet_motion_stream_info();
+                        motion_outlet = std::make_unique<lsl::stream_outlet>(info);
+                        std::cout << "Set up motion outlet!" << std::endl;
+                    }
+                    motion_outlet->push_sample(result.motion_data);
+                } else if (result.has_eeg) {
+                    if (!eeg_outlet) {
+                        lsl::stream_info info = get_lsl_outlet_eeg_stream_info();
+                        eeg_outlet = std::make_unique<lsl::stream_outlet>(info);
+                        std::cout << "Set up EEG outlet! Channels: " << result.eeg_data.size() << std::endl;
+                    }
+                    eeg_outlet->push_sample(result.eeg_data);
+                }
+                if (!headset_stream) {
+                    print_waiting_status_if_due();
+                }
+            } else {
+                print_waiting_status_if_due();
+            }
+        }
+
+        if (recorder) {
+            recorder->requestStop();
+        }
+
+        hid_close(device);
+        eeg_outlet.reset();
+        motion_outlet.reset();
+        eeg_quality_outlet.reset();
+        has_motion_data = false;
     }
 
-    hid_close(device);
     hid_exit();
 }

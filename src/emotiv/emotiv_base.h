@@ -47,6 +47,7 @@ protected:
     virtual std::vector<uint8_t> get_crypto_key() = 0;
     virtual std::string get_lsl_source_id();
     hid_device* get_hid_device();
+    hid_device* find_open_emotiv_device();
 
     // LSL outlets
     lsl::stream_info add_lsl_outlet_info_common(lsl::stream_info& info);
