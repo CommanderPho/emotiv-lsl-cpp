@@ -13,3 +13,15 @@ std::optional<std::filesystem::path> find_lab_recorder_config_file(
 /// Returns nullopt if the file cannot be resolved (missing data, parse error, or BIDS-only without template handling).
 std::optional<std::filesystem::path> resolve_lab_recorder_output_path(
     const std::filesystem::path& labrec_cfg_path);
+
+/// LabRecorder `MainWindow::replaceFilename` equivalent (UTC placeholders, order, `%datetime` before `%datetime_eeg` suffix).
+/// Used by tests and for parity verification; `bids_checked` maps to `counterPlaceholder() == "%r"`.
+std::string lab_recorder_replace_filename(
+    std::string fullfile,
+    const std::string& block,
+    const std::string& participant,
+    const std::string& session,
+    const std::string& acq,
+    const std::string& modality,
+    int spin_counter,
+    bool bids_checked);

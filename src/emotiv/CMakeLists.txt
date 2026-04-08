@@ -7,6 +7,7 @@ add_executable(emotiv_lsl
     emotiv_base.cpp
     emotiv_epoc_x.cpp
     emotiv_lsl_log_config.cpp
+    shutdown_hooks.cpp
     "${tiny_aes_SOURCE_DIR}/aes.c"
 )
 
@@ -58,3 +59,12 @@ add_custom_command(TARGET emotiv_lsl POST_BUILD
         $<TARGET_FILE_DIR:emotiv_lsl>
     COMMENT "Copying lsl_api.cfg (quiet liblsl logging) for emotiv_lsl"
 )
+
+add_executable(lab_recorder_cfg_smoke
+    lab_recorder_cfg_smoke.cpp
+    lab_recorder_cfg.cpp
+)
+target_include_directories(lab_recorder_cfg_smoke PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+if(WIN32)
+    target_link_libraries(lab_recorder_cfg_smoke PRIVATE shell32)
+endif()

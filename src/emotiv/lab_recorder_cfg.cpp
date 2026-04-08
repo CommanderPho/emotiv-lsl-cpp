@@ -77,7 +77,74 @@ std::filesystem::path get_documents_directory() {
     return std::filesystem::current_path();
 }
 
-std::string hostname_string() {
+std::chrono::system_clock::time_point now_for_placeholders() {
+    if (const char* e = std::getenv("EMOTIV_LABREC_FIXED_UNIX_MS")) {
+        const long long ms = std::atoll(e);
+        return std::chrono::system_clock::time_point(std::chrono::milliseconds(ms));
+    }
+    return std::chrono::system_clock::now();
+}
+
+/// Qt `QDateTime::currentDateTimeUtc().toString("yyyy-MM-ddTHHmmss.zzzZ")` for UTC (compact clock, ms, zone).
+std::string qt_style_datetime_utc_ms(const std::chrono::system_clock::time_point& tp) {
+    using namespace std::chrono;
+    const auto ms = duration_cast<milliseconds>(tp.time_since_epoch()) % 1000;
+    const std::time_t t = system_clock::to_time_t(tp);
+    std::tm utc{};
+#if defined(_WIN32)
+    if (gmtime_s(&utc, &t) != 0) {
+        return {};
+    }
+#else
+    if (gmtime_r(&t, &utc) == nullptr) {
+        return {};
+    }
+#endif
+    std::ostringstream o;
+    o << std::put_time(&utc, "%Y-%m-%dT%H%M%S") << '.' << std::setfill('0') << std::setw(3) << ms.count() << 'Z';
+    return o.str();
+}
+
+std::string qt_style_date_utc(const std::chrono::system_clock::time_point& tp) {
+    const std::time_t t = std::chrono::system_clock::to_time_t(tp);
+    std::tm utc{};
+#if defined(_WIN32)
+    if (gmtime_s(&utc, &t) != 0) {
+        return {};
+    }
+#else
+    if (gmtime_r(&t, &utc) == nullptr) {
+        return {};
+    }
+#endif
+    char buf[32];
+    if (std::strftime(buf, sizeof(buf), "%Y-%m-%d", &utc) == 0) {
+        return {};
+    }
+    return std::string(buf);
+}
+
+/// Qt `nowUtc.toString("HHmmss.zzzZ")` — UTC time-of-day only.
+std::string qt_style_time_utc(const std::chrono::system_clock::time_point& tp) {
+    using namespace std::chrono;
+    const auto ms = duration_cast<milliseconds>(tp.time_since_epoch()) % 1000;
+    const std::time_t t = system_clock::to_time_t(tp);
+    std::tm utc{};
+#if defined(_WIN32)
+    if (gmtime_s(&utc, &t) != 0) {
+        return {};
+    }
+#else
+    if (gmtime_r(&t, &utc) == nullptr) {
+        return {};
+    }
+#endif
+    std::ostringstream o;
+    o << std::put_time(&utc, "%H%M%S") << '.' << std::setfill('0') << std::setw(3) << ms.count() << 'Z';
+    return o.str();
+}
+
+std::string hostname_raw() {
 #if defined(_WIN32)
     char buf[256];
     DWORD n = sizeof(buf);
@@ -90,69 +157,24 @@ std::string hostname_string() {
         return std::string(buf);
     }
 #endif
-    return "unknown-host";
+    return "UNKNOWN-HOST";
 }
 
-std::string iso8601_utc_ms() {
-    using namespace std::chrono;
-    const auto now = system_clock::now();
-    const auto ms = duration_cast<milliseconds>(now.time_since_epoch()) % 1000;
-    const std::time_t t = system_clock::to_time_t(now);
-    std::tm utc{};
-#if defined(_WIN32)
-    if (gmtime_s(&utc, &t) != 0) {
-        return {};
+void sanitize_hostname_like_qt(std::string& h) {
+    if (h.empty()) {
+        h = "UNKNOWN-HOST";
+        return;
     }
-#else
-    if (gmtime_r(&t, &utc) == nullptr) {
-        return {};
+    for (char& c : h) {
+        if (std::isspace(static_cast<unsigned char>(c))) {
+            c = '_';
+        }
     }
-#endif
-    std::ostringstream o;
-    o << std::put_time(&utc, "%Y-%m-%dT%H:%M:%S") << '.' << std::setfill('0') << std::setw(3) << ms.count() << 'Z';
-    return o.str();
-}
-
-std::string local_date_yyyy_mm_dd() {
-    using namespace std::chrono;
-    const auto now = system_clock::now();
-    const std::time_t t = system_clock::to_time_t(now);
-    std::tm local_tm{};
-#if defined(_WIN32)
-    if (localtime_s(&local_tm, &t) != 0) {
-        return {};
+    for (char& c : h) {
+        if (c == '<' || c == '>' || c == ':' || c == '"' || c == '/' || c == '\\' || c == '|' || c == '?' || c == '*') {
+            c = '_';
+        }
     }
-#else
-    if (localtime_r(&t, &local_tm) == nullptr) {
-        return {};
-    }
-#endif
-    char buf[32];
-    if (std::strftime(buf, sizeof(buf), "%Y-%m-%d", &local_tm) == 0) {
-        return {};
-    }
-    return std::string(buf);
-}
-
-std::string local_time_hh_mm_ss() {
-    using namespace std::chrono;
-    const auto now = system_clock::now();
-    const std::time_t t = system_clock::to_time_t(now);
-    std::tm local_tm{};
-#if defined(_WIN32)
-    if (localtime_s(&local_tm, &t) != 0) {
-        return {};
-    }
-#else
-    if (localtime_r(&t, &local_tm) == nullptr) {
-        return {};
-    }
-#endif
-    char buf[32];
-    if (std::strftime(buf, sizeof(buf), "%H-%M-%S", &local_tm) == 0) {
-        return {};
-    }
-    return std::string(buf);
 }
 
 void replace_all(std::string& s, const std::string& from, const std::string& to) {
@@ -173,34 +195,79 @@ struct Defaults {
     std::string modality = "eeg";
 };
 
-std::string expand_placeholders(std::string tpl, const Defaults& d, int counter, bool use_run_r) {
-    const std::string dt = iso8601_utc_ms();
-    replace_all(tpl, "%datetime_eeg", dt);
-    replace_all(tpl, "%datetime", dt);
-    replace_all(tpl, "%date", local_date_yyyy_mm_dd());
-    replace_all(tpl, "%time", local_time_hh_mm_ss());
-    replace_all(tpl, "%hostname", hostname_string());
-
-    replace_all(tpl, "%b", d.block);
-    replace_all(tpl, "%p", d.participant);
-    replace_all(tpl, "%s", d.session);
-    replace_all(tpl, "%a", d.acq);
-    replace_all(tpl, "%m", d.modality);
+/// Mirrors `MainWindow::replaceFilename` order (LabRecorder App-LabRecorder).
+void replace_filename_in_place(
+    std::string& fullfile,
+    const Defaults& d,
+    int spin_counter,
+    bool bids_checked,
+    const std::chrono::system_clock::time_point& now_tp) {
+    replace_all(fullfile, "%b", d.block);
+    replace_all(fullfile, "%p", d.participant);
+    replace_all(fullfile, "%s", d.session);
+    replace_all(fullfile, "%a", d.acq);
+    replace_all(fullfile, "%m", d.modality);
 
     std::ostringstream run_os;
-    run_os << std::setw(3) << std::setfill('0') << counter;
+    run_os << std::setw(3) << std::setfill('0') << spin_counter;
     const std::string run = run_os.str();
-    if (use_run_r) {
-        replace_all(tpl, "%r", run);
-    }
-    if (!use_run_r) {
-        replace_all(tpl, "%n", run);
-    }
-    return tpl;
+    const char* counter_ph = bids_checked ? "%r" : "%n";
+    replace_all(fullfile, counter_ph, run);
+
+    replace_all(fullfile, "%datetime", qt_style_datetime_utc_ms(now_tp));
+    replace_all(fullfile, "%date", qt_style_date_utc(now_tp));
+    replace_all(fullfile, "%time", qt_style_time_utc(now_tp));
+
+    std::string host = hostname_raw();
+    sanitize_hostname_like_qt(host);
+    replace_all(fullfile, "%hostname", host);
+
+    auto not_space = [](unsigned char c) { return !std::isspace(c); };
+    fullfile.erase(fullfile.begin(), std::find_if(fullfile.begin(), fullfile.end(), not_space));
+    fullfile.erase(std::find_if(fullfile.rbegin(), fullfile.rend(), not_space).base(), fullfile.end());
 }
 
-bool template_has_counter(const std::string& tpl, bool bids) {
-    return bids ? (tpl.find("%r") != std::string::npos) : (tpl.find("%n") != std::string::npos);
+std::vector<std::string> parse_session_blocks_value(const std::string& raw) {
+    std::vector<std::string> out;
+    if (raw.empty() || raw[0] == '@') {
+        return out;
+    }
+    size_t i = 0;
+    while (i < raw.size()) {
+        while (i < raw.size() && (raw[i] == ' ' || raw[i] == '\t' || raw[i] == ',')) {
+            ++i;
+        }
+        if (i >= raw.size()) {
+            break;
+        }
+        if (raw[i] == '"') {
+            ++i;
+            std::string item;
+            while (i < raw.size() && raw[i] != '"') {
+                item += raw[i++];
+            }
+            if (i < raw.size()) {
+                ++i;
+            }
+            if (!item.empty()) {
+                out.push_back(std::move(item));
+            }
+        } else {
+            const size_t start = i;
+            while (i < raw.size() && raw[i] != ',') {
+                ++i;
+            }
+            std::string item = trim(raw.substr(start, i - start));
+            if (!item.empty()) {
+                out.push_back(std::move(item));
+            }
+        }
+    }
+    return out;
+}
+
+bool template_has_counter(const std::string& tpl, bool use_run_r) {
+    return use_run_r ? (tpl.find("%r") != std::string::npos) : (tpl.find("%n") != std::string::npos);
 }
 
 std::filesystem::path normalize_join(std::filesystem::path root, std::string rel) {
@@ -215,7 +282,44 @@ std::filesystem::path normalize_join(std::filesystem::path root, std::string rel
     return (root / rel).lexically_normal();
 }
 
+void rename_existing_file_labrecorder_style(const std::filesystem::path& target) {
+    std::error_code ec;
+    if (!std::filesystem::is_regular_file(target, ec)) {
+        return;
+    }
+    const auto parent = target.parent_path();
+    const auto stem = target.stem().string();
+    const auto ext = target.extension().string();
+    for (int i = 1; i < 10000; ++i) {
+        const auto candidate = parent / (stem + "_old" + std::to_string(i) + ext);
+        if (!std::filesystem::exists(candidate, ec)) {
+            std::filesystem::rename(target, candidate, ec);
+            return;
+        }
+    }
+}
+
 } // namespace
+
+std::string lab_recorder_replace_filename(
+    std::string fullfile,
+    const std::string& block,
+    const std::string& participant,
+    const std::string& session,
+    const std::string& acq,
+    const std::string& modality,
+    int spin_counter,
+    bool bids_checked) {
+    Defaults d;
+    d.block = block;
+    d.participant = participant;
+    d.session = session;
+    d.acq = acq;
+    d.modality = modality;
+    const auto now_tp = now_for_placeholders();
+    replace_filename_in_place(fullfile, d, spin_counter, bids_checked, now_tp);
+    return fullfile;
+}
 
 std::optional<std::filesystem::path> find_lab_recorder_config_file(
     const std::optional<std::filesystem::path>& explicit_path,
@@ -234,6 +338,12 @@ std::optional<std::filesystem::path> find_lab_recorder_config_file(
 #if defined(_WIN32)
     if (const char* p = std::getenv("LOCALAPPDATA")) {
         dirs.push_back(std::filesystem::path(p) / "LabRecorder");
+    }
+    {
+        char buf[MAX_PATH];
+        if (SUCCEEDED(SHGetFolderPathA(nullptr, CSIDL_COMMON_APPDATA, nullptr, SHGFP_TYPE_CURRENT, buf))) {
+            dirs.push_back(std::filesystem::path(buf) / "LabRecorder");
+        }
     }
     if (const char* p = std::getenv("APPDATA")) {
         dirs.push_back(std::filesystem::path(p) / "LabRecorder");
@@ -270,20 +380,6 @@ std::optional<std::filesystem::path> find_lab_recorder_config_file(
     return std::nullopt;
 }
 
-static bool strip_study_root_prefix(const std::string& study_root_norm, std::string* str_path) {
-    std::filesystem::path srp(study_root_norm);
-    const std::string sr = srp.generic_string();
-    std::string& sp = *str_path;
-    std::filesystem::path raw(sp);
-    const std::string spg = raw.generic_string();
-    if (spg.size() > sr.size() && spg.compare(0, sr.size(), sr) == 0 &&
-        (spg[sr.size()] == '/' || spg[sr.size()] == '\\')) {
-        sp = spg.substr(sr.size() + 1);
-        return true;
-    }
-    return false;
-}
-
 std::optional<std::filesystem::path> resolve_lab_recorder_output_path(
     const std::filesystem::path& labrec_cfg_path) {
     const auto kv = read_ini_flat(labrec_cfg_path);
@@ -293,6 +389,7 @@ std::optional<std::filesystem::path> resolve_lab_recorder_output_path(
         kv.find("StorageLocation") != kv.end() && !kv.at("StorageLocation").empty();
     const bool has_study = kv.find("StudyRoot") != kv.end() && !kv.at("StudyRoot").empty();
     const bool has_path_tpl = kv.find("PathTemplate") != kv.end() && !kv.at("PathTemplate").empty();
+    const bool had_explicit_path_template = has_path_tpl || has_storage;
 
     if (has_storage) {
         if (has_study || has_path_tpl) {
@@ -301,22 +398,41 @@ std::optional<std::filesystem::path> resolve_lab_recorder_output_path(
         const std::string str_path = kv.at("StorageLocation");
         const size_t index = str_path.find('%');
         const std::string path_root = index != std::string::npos ? str_path.substr(0, index) : str_path;
-        std::filesystem::path pr(path_root);
         std::error_code ec;
-        const std::filesystem::path study_root_path = std::filesystem::absolute(pr, ec).parent_path();
+        const std::filesystem::path abs_path_root = std::filesystem::absolute(std::filesystem::path(path_root), ec);
         if (ec) {
             return std::nullopt;
         }
+        std::filesystem::path study_root_path;
+        if (std::filesystem::exists(abs_path_root, ec) && std::filesystem::is_directory(abs_path_root, ec)) {
+            study_root_path = abs_path_root;
+        } else {
+            study_root_path = abs_path_root.parent_path();
+        }
         study_root = study_root_path.string();
-        std::string remainder = str_path;
-        if (!strip_study_root_prefix(study_root_path.generic_string(), &remainder)) {
-            const std::string sr_alt = study_root_path.string();
-            remainder = str_path;
-            if (!strip_study_root_prefix(sr_alt, &remainder)) {
+
+        const std::string sr_gen = study_root_path.generic_string();
+        std::string str_norm = str_path;
+        for (char& c : str_norm) {
+            if (c == '\\') {
+                c = '/';
+            }
+        }
+        if (str_norm.size() > sr_gen.size() + 1 && str_norm.compare(0, sr_gen.size(), sr_gen) == 0 && str_norm[sr_gen.size()] == '/') {
+            legacy_template = str_norm.substr(sr_gen.size() + 1);
+        } else {
+            std::string sr2 = study_root_path.string();
+            for (char& c : sr2) {
+                if (c == '\\') {
+                    c = '/';
+                }
+            }
+            if (str_norm.size() > sr2.size() + 1 && str_norm.compare(0, sr2.size(), sr2) == 0 && str_norm[sr2.size()] == '/') {
+                legacy_template = str_norm.substr(sr2.size() + 1);
+            } else {
                 return std::nullopt;
             }
         }
-        legacy_template = remainder;
     } else {
         if (has_study) {
             study_root = kv.at("StudyRoot");
@@ -326,6 +442,7 @@ std::optional<std::filesystem::path> resolve_lab_recorder_output_path(
         }
     }
 
+    const bool legacy_was_empty_initial = legacy_template.empty();
     if (study_root.empty()) {
         study_root = (get_documents_directory() / "CurrentStudy").string();
     } else {
@@ -336,28 +453,63 @@ std::optional<std::filesystem::path> resolve_lab_recorder_output_path(
         }
     }
 
-    const bool bids_default = legacy_template.empty();
-    if (bids_default) {
+    if (legacy_template.empty()) {
         legacy_template = "sub-%p/ses-%s/%m/sub-%p_ses-%s_task-%b_run-%r_%m.xdf";
     }
 
-    const bool bids = bids_default || (legacy_template.find("sub-%p") != std::string::npos);
+    const bool use_run_r = !had_explicit_path_template && legacy_was_empty_initial;
+
     Defaults d;
-    const bool use_run_r = bids;
+    {
+        constexpr const char kPrefix[] = "SessionBlocks\\";
+        std::vector<std::pair<int, std::string>> indexed_blocks;
+        for (const auto& pr : kv) {
+            const std::string& key = pr.first;
+            if (key.size() > sizeof(kPrefix) - 1 && key.compare(0, sizeof(kPrefix) - 1, kPrefix) == 0) {
+                const int idx = std::atoi(key.c_str() + (sizeof(kPrefix) - 1));
+                if (idx > 0) {
+                    indexed_blocks.emplace_back(idx, pr.second);
+                }
+            }
+        }
+        if (!indexed_blocks.empty()) {
+            std::sort(indexed_blocks.begin(), indexed_blocks.end(),
+                [](const std::pair<int, std::string>& a, const std::pair<int, std::string>& b) { return a.first < b.first; });
+            d.block = indexed_blocks.front().second;
+        } else {
+            auto it_blocks = kv.find("SessionBlocks");
+            if (it_blocks != kv.end()) {
+                const auto blocks = parse_session_blocks_value(it_blocks->second);
+                if (!blocks.empty()) {
+                    d.block = blocks.front();
+                }
+            }
+        }
+    }
+
+    const auto now_tp = now_for_placeholders();
+
+    auto expand_one = [&](int counter) {
+        std::string t = legacy_template;
+        replace_filename_in_place(t, d, counter, use_run_r, now_tp);
+        return t;
+    };
 
     if (!template_has_counter(legacy_template, use_run_r)) {
-        std::string expanded = expand_placeholders(legacy_template, d, 1, use_run_r);
+        std::string expanded = expand_one(1);
         std::filesystem::path full = normalize_join(std::filesystem::path(study_root), expanded);
         std::error_code ec;
         std::filesystem::create_directories(full.parent_path(), ec);
         if (ec) {
             return std::nullopt;
         }
-        return std::filesystem::absolute(full);
+        const auto abs_full = std::filesystem::absolute(full);
+        rename_existing_file_labrecorder_style(abs_full);
+        return abs_full;
     }
 
     for (int i = 1; i <= 1000; ++i) {
-        std::string expanded = expand_placeholders(legacy_template, d, i, use_run_r);
+        std::string expanded = expand_one(i);
         std::filesystem::path full = normalize_join(std::filesystem::path(study_root), expanded);
         std::error_code ec;
         if (!std::filesystem::exists(full, ec)) {

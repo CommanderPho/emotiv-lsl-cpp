@@ -12,6 +12,7 @@
 
 namespace {
 constexpr auto kReconnectInterval = std::chrono::seconds(2);
+constexpr auto kDeviceWaitSlice = std::chrono::milliseconds(200);
 constexpr int kHidReadTimeoutMs = 500;
 constexpr auto kWaitingStatusInterval = std::chrono::seconds(4);
 }
@@ -21,6 +22,10 @@ EmotivBase::EmotivBase(bool enable_motion, bool enable_quality, const std::strin
 }
 
 EmotivBase::~EmotivBase() {
+}
+
+void EmotivBase::requestShutdown() noexcept {
+    shutdown_requested_.store(true, std::memory_order_relaxed);
 }
 
 std::string EmotivBase::get_lsl_source_id() {
@@ -171,14 +176,21 @@ void EmotivBase::main_loop() {
     std::unique_ptr<lsl::stream_outlet> eeg_quality_outlet;
     std::unique_ptr<recording> recorder;
 
-    while (true) {
+    while (!shutdown_requested_.load(std::memory_order_relaxed)) {
         hid_device* device = nullptr;
-        while (!device) {
+        while (!device && !shutdown_requested_.load(std::memory_order_relaxed)) {
             device = find_open_emotiv_device();
             if (!device) {
                 std::cout << "No Emotiv USB receiver detected (dongle unplugged or not enumerated), retrying..." << std::endl;
-                std::this_thread::sleep_for(kReconnectInterval);
+                const auto wait_until = std::chrono::steady_clock::now() + kReconnectInterval;
+                while (std::chrono::steady_clock::now() < wait_until && !shutdown_requested_.load(std::memory_order_relaxed)) {
+                    std::this_thread::sleep_for(kDeviceWaitSlice);
+                }
             }
+        }
+
+        if (shutdown_requested_.load(std::memory_order_relaxed)) {
+            break;
         }
 
         std::cout << "USB receiver connected (" << device_name << ") — waiting for headset (EEG/motion)";
@@ -222,13 +234,18 @@ void EmotivBase::main_loop() {
             std::cout << std::endl;
         };
 
-        while (true) {
+        while (!shutdown_requested_.load(std::memory_order_relaxed)) {
             int bytes_read = hid_read_timeout(device, buffer.data(), READ_SIZE, kHidReadTimeoutMs);
             if (bytes_read < 0) {
-                std::cerr << "Disconnected or read error, reconnecting..." << std::endl;
+                if (!shutdown_requested_.load(std::memory_order_relaxed)) {
+                    std::cerr << "Disconnected or read error, reconnecting..." << std::endl;
+                }
                 break;
             }
             if (bytes_read == 0) {
+                if (shutdown_requested_.load(std::memory_order_relaxed)) {
+                    break;
+                }
                 print_waiting_status_if_due();
                 continue;
             }
@@ -298,11 +315,17 @@ void EmotivBase::main_loop() {
             recorder.reset();
         }
 
-        hid_close(device);
+        if (device) {
+            hid_close(device);
+        }
         eeg_outlet.reset();
         motion_outlet.reset();
         eeg_quality_outlet.reset();
         has_motion_data = false;
+
+        if (shutdown_requested_.load(std::memory_order_relaxed)) {
+            break;
+        }
     }
 
     hid_exit();

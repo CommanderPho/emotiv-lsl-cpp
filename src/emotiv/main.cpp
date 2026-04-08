@@ -4,7 +4,17 @@
 #include "emotiv_epoc_x.h"
 #include "emotiv_lsl_log_config.h"
 #include "lab_recorder_cfg.h"
+#include "shutdown_hooks.h"
 #include "lsltemplate/Config.hpp"
+
+class EmotivBase;
+
+namespace {
+struct EmotivShutdownScope {
+    explicit EmotivShutdownScope(EmotivBase* base) { install_emotiv_shutdown_handlers(base); }
+    ~EmotivShutdownScope() { remove_emotiv_shutdown_handlers(); }
+};
+} // namespace
 
 int main(int argc, char* argv[]) {
     emotiv_set_lslapicfg_from_exe_dir();
@@ -55,6 +65,7 @@ int main(int argc, char* argv[]) {
 
         EmotivEpocX epocX(enable_motion, enable_quality, record_file);
 
+        EmotivShutdownScope shutdown_scope(&epocX);
         epocX.main_loop();
     } catch (const std::exception& e) {
         std::cerr << "Error: " << e.what() << std::endl;
