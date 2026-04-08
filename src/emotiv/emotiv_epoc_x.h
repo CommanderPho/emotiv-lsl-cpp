@@ -3,7 +3,7 @@
 
 class EmotivEpocX : public EmotivBase {
 public:
-    EmotivEpocX(bool enable_motion_data = false, bool enable_electrode_quality_stream = false);
+    EmotivEpocX(bool enable_motion_data = false, bool enable_electrode_quality_stream = false, const std::string& record_file = "");
     ~EmotivEpocX();
 
 protected:

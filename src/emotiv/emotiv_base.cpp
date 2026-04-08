@@ -5,9 +5,10 @@
 #include <sstream>
 #include <stdexcept>
 #include <chrono>
+#include "recording.h"
 
-EmotivBase::EmotivBase(bool enable_motion, bool enable_quality)
-    : enable_motion_data(enable_motion), enable_electrode_quality_stream(enable_quality) {
+EmotivBase::EmotivBase(bool enable_motion, bool enable_quality, const std::string& record_file)
+    : enable_motion_data(enable_motion), enable_electrode_quality_stream(enable_quality), record_file(record_file) {
 }
 
 EmotivBase::~EmotivBase() {
@@ -157,6 +158,13 @@ void EmotivBase::main_loop() {
     std::unique_ptr<lsl::stream_outlet> motion_outlet;
     std::unique_ptr<lsl::stream_outlet> eeg_quality_outlet;
 
+    std::unique_ptr<recording> recorder;
+    if (!record_file.empty()) {
+        std::vector<std::string> watchfor = { "source_id='" + get_lsl_source_id() + "'" };
+        std::map<std::string, int> syncOpt;
+        recorder = std::make_unique<recording>(record_file, std::vector<lsl::stream_info>(), watchfor, syncOpt, true);
+    }
+
     uint32_t packet_count = 0;
     std::vector<uint8_t> buffer(READ_SIZE);
 
@@ -205,6 +213,11 @@ void EmotivBase::main_loop() {
             }
         }
     }
+    
+    if (recorder) {
+        recorder->requestStop(); // signal the internal threads
+    }
+
     hid_close(device);
     hid_exit();
 }
