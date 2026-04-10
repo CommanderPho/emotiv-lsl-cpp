@@ -1,6 +1,10 @@
 # Emotiv LSL C++ Application
 # Streams EEG, motion, and electrode quality data from Emotiv EPOC X headset via LSL.
 
+if(WIN32)
+    enable_language(RC)
+endif()
+
 add_executable(emotiv_lsl
     main.cpp
     lab_recorder_cfg.cpp
@@ -24,6 +28,7 @@ target_compile_definitions(emotiv_lsl PRIVATE
 )
 
 if(WIN32)
+    target_sources(emotiv_lsl PRIVATE emotiv_lsl.rc)
     target_link_libraries(emotiv_lsl PRIVATE hidapi_winapi LSL::lsl xdfwriter LSLTemplate::core shell32)
 
     add_custom_command(TARGET emotiv_lsl POST_BUILD
