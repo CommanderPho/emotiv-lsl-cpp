@@ -157,6 +157,16 @@ Connect your Emotiv headset dongle before running. The server will automatically
 
 You can use standard LSL tools like `bsl_stream_viewer` to visualize the incoming data streams.
 
+### XDF recording
+
+- **`--record <path>`** — Writes an XDF at the given path. This **always wins** over config-based paths.
+- **`-c` / `--config <file>`** — Optional explicit [App-LabRecorder](https://github.com/labstreaminglayer/App-LabRecorder)-style INI (same keys as upstream `LabRecorder.cfg`). If omitted, `emotiv_lsl` searches for **`LabRecorder.cfg`** in the same order as App-LabRecorder’s `find_config_file`: current working directory, then each standard config/data location used for `LabRecorder` on your OS (on Windows this includes `%LOCALAPPDATA%\LabRecorder`, `%PROGRAMDATA%\LabRecorder`, `%APPDATA%\LabRecorder`, in that order after cwd), then the directory containing `emotiv_lsl`. It reads **`StudyRoot`**, **`PathTemplate`**, or **`StorageLocation`** with the same mutual-exclusion rules as LabRecorder. Wildcard expansion follows **`MainWindow::replaceFilename`**: replacements run in that order (`%b`, `%p`, `%s`, `%a`, `%m`, then `%n` or `%r`, then `%datetime`, `%date`, `%time`, `%hostname`). **`%date`**, **`%time`**, and **`%datetime`** use **UTC**, with the same compact formats as Qt (`yyyy-MM-ddTHHmmss.zzzZ` for `%datetime`). There is no separate `%datetime_eeg` token in LabRecorder: `%datetime` replaces the leading segment of `%datetime_eeg`, leaving a literal `_eeg` in the filename (same as Qt `QString::replace`). Use **`%n`** for the run counter when a **`PathTemplate`** or **`StorageLocation`** template is present; use **`%r`** only for the built-in default BIDS template when neither template is specified (only **`StudyRoot`** or defaults). **`SessionBlocks`** (comma-quoted list and/or Qt-style `SessionBlocks\1=` … indexed entries) sets the default **`%b`** block label to the first block. If the template includes **`%n`** or **`%r`**, the first unused counter value is chosen (same scan as LabRecorder on load). If there is no counter in the template and the target file already exists, the existing file is renamed to `basename_oldN.ext` before recording, matching LabRecorder’s start behavior.
+- **Fallback** — If no usable LabRecorder path is found, `emotiv_lsl` may use **`LSLTemplate.cfg`** and its optional **`[Recording]`** block (`enabled=1`, `directory`, `filename_template` with `{stream_name}`, `{basename}`, `{date}`, `{time}`) as before.
+
+For deterministic tests or tooling, set **`EMOTIV_LABREC_FIXED_UNIX_MS`** to epoch milliseconds so placeholder times are fixed; the **`lab_recorder_cfg_smoke`** target exercises path logic without a headset.
+
+Example: place a valid `LabRecorder.cfg` next to `emotiv_lsl.exe` or under `%LOCALAPPDATA%\LabRecorder\`, or pass `-c C:\path\LabRecorder.cfg`.
+
 ## Usage
 
 ### GUI Application

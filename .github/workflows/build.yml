@@ -1,15 +1,15 @@
 # =============================================================================
-# LSL Application Build Workflow
+# Emotiv LSL Build Workflow
 # =============================================================================
-# This workflow builds, tests, and packages the LSL application for all
-# supported platforms. It serves as a reference for other LSL applications.
+# This workflow builds and packages the Emotiv LSL server application for all
+# supported platforms (Linux, macOS, Windows).
 #
 # Features:
 #   - Multi-platform builds (Linux, macOS, Windows)
-#   - Qt6 integration
-#   - Automatic liblsl fetch via FetchContent
+#   - Automatic dependency fetching (liblsl, hidapi, tiny-AES-c) via FetchContent
 #   - CPack packaging
 #   - macOS code signing and notarization (on release)
+#   - Automatic upload of release binaries
 # =============================================================================
 
 name: Build
@@ -55,30 +55,25 @@ jobs:
         uses: lukka/get-cmake@latest
 
       # -----------------------------------------------------------------------
-      # Install Qt6 (6.8 LTS across all platforms)
+      # Install platform dependencies (no Qt needed — server app only)
       # -----------------------------------------------------------------------
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgl1-mesa-dev libxkbcommon-dev libxcb-cursor0 \
-            libudev-dev libusb-1.0-0-dev
-
-      - name: Install Qt
-        uses: jurplel/install-qt-action@v4
-        with:
-          version: '6.8.*'
-          cache: true
+          sudo apt-get install -y libudev-dev libusb-1.0-0-dev
 
       # -----------------------------------------------------------------------
-      # Configure
+      # Configure (emotiv_lsl only — no GUI/CLI)
       # -----------------------------------------------------------------------
       - name: Configure CMake
         run: >
           cmake -S . -B build
           -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }}
           -DCMAKE_INSTALL_PREFIX=${{ github.workspace }}/install
-          -DLSL_FETCH_IF_MISSING=ON
+          -DLSLTEMPLATE_BUILD_GUI=OFF
+          -DLSLTEMPLATE_BUILD_CLI=OFF
+          -DEMOTIVLSL_BUILD_EMOTIV=ON
           ${{ matrix.config.cmake_extra }}
 
       # -----------------------------------------------------------------------
@@ -92,21 +87,6 @@ jobs:
       # -----------------------------------------------------------------------
       - name: Install
         run: cmake --install build --config ${{ env.BUILD_TYPE }}
-
-      # -----------------------------------------------------------------------
-      # Test CLI
-      # -----------------------------------------------------------------------
-      - name: Test CLI (Linux)
-        if: runner.os == 'Linux'
-        run: ./install/bin/LSLTemplateCLI --help
-
-      - name: Test CLI (macOS)
-        if: runner.os == 'macOS'
-        run: ./install/LSLTemplateCLI --help
-
-      - name: Test CLI (Windows)
-        if: runner.os == 'Windows'
-        run: ./install/LSLTemplateCLI.exe --help
 
       # -----------------------------------------------------------------------
       # Package
@@ -152,9 +132,11 @@ jobs:
           cd packages
           tar -xzf *.tar.gz
           # Move contents out of versioned subdirectory to packages/
-          SUBDIR=$(ls -d LSLTemplate-*/ | head -1)
-          mv "$SUBDIR"/* .
-          rmdir "$SUBDIR"
+          SUBDIR=$(ls -d LSLTemplate-*/ 2>/dev/null | head -1)
+          if [[ -n "$SUBDIR" ]]; then
+            mv "$SUBDIR"/* .
+            rmdir "$SUBDIR"
+          fi
           ls -la
 
       # -----------------------------------------------------------------------
@@ -209,22 +191,21 @@ jobs:
         env:
           ENTITLEMENTS_FILE: ${{ github.workspace }}/app.entitlements
         run: |
-          # Sign GUI app bundle (--deep handles all nested code including lsl.framework)
-          APP_PATH=$(find packages -name "*.app" -type d | head -1)
-          if [[ -n "$APP_PATH" ]]; then
-            ./scripts/sign_and_notarize.sh "$APP_PATH" --notarize
-          fi
-
-          # Sign CLI and its bundled lsl.framework
-          CLI_PATH=$(find packages -name "LSLTemplateCLI" -type f | head -1)
-          if [[ -n "$CLI_PATH" ]]; then
-            CLI_DIR=$(dirname "$CLI_PATH")
+          # Sign emotiv_lsl and its bundled lsl.framework
+          EMOTIV_PATH=$(find packages -name "emotiv_lsl" -type f | head -1)
+          if [[ -n "$EMOTIV_PATH" ]]; then
+            EMOTIV_DIR=$(dirname "$EMOTIV_PATH")
             # Sign framework first (dependency must be signed before dependent)
-            if [[ -d "$CLI_DIR/Frameworks/lsl.framework" ]]; then
+            if [[ -d "$EMOTIV_DIR/Frameworks/lsl.framework" ]]; then
               codesign --force --sign "$APPLE_CODE_SIGN_IDENTITY_APP" --options runtime \
-                "$CLI_DIR/Frameworks/lsl.framework"
+                "$EMOTIV_DIR/Frameworks/lsl.framework"
             fi
-            ./scripts/sign_and_notarize.sh "$CLI_PATH" --notarize
+            # Also look for Frameworks in parent directory
+            if [[ -d "packages/Frameworks/lsl.framework" ]]; then
+              codesign --force --sign "$APPLE_CODE_SIGN_IDENTITY_APP" --options runtime \
+                "packages/Frameworks/lsl.framework"
+            fi
+            ./scripts/sign_and_notarize.sh "$EMOTIV_PATH" --notarize
           fi
 
       # -----------------------------------------------------------------------
@@ -245,9 +226,18 @@ jobs:
           VERSION=$(grep -A1 'project(LSLTemplate' ../CMakeLists.txt | grep VERSION | sed 's/.*VERSION \([0-9.]*\).*/\1/')
           echo "Detected version: $VERSION"
 
-          # Create signed package with CLI and its Frameworks (universal binary)
-          tar -cvzf "LSLTemplate-${VERSION}-macOS_universal-signed.tar.gz" \
-            LSLTemplate.app LSLTemplateCLI Frameworks
+          # Collect all installed files for the signed package
+          FILES=""
+          for f in emotiv_lsl LSLTemplate.cfg; do
+            [[ -e "$f" ]] && FILES="$FILES $f"
+          done
+          [[ -d Frameworks ]] && FILES="$FILES Frameworks"
+          # Include any hidapi dylibs
+          for f in libhidapi*; do
+            [[ -e "$f" ]] && FILES="$FILES $f"
+          done
+
+          tar -cvzf "LSLTemplate-${VERSION}-macOS_universal-signed.tar.gz" $FILES
 
           echo "Created package:"
           ls -la *.tar.gz

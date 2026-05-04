@@ -1,5 +1,6 @@
 ui_*.h
 /build*/
+/dist/
 /CMakeLists.txt.user
 /CMakeLists.json
 /.vs/
@@ -8,3 +9,6 @@ ui_*.h
 .DS_Store
 .idea
 desktop.ini
+.specstory
+*.xdf
+images/icons/emotiv_lsl_icon_design.ico

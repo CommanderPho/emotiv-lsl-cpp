@@ -144,6 +144,9 @@ LSL_configure_rpath()
 # Targets
 # =============================================================================
 
+# xdfwriter library
+add_subdirectory(xdfwriter)
+
 # Core library (Qt-independent, shared between CLI and GUI)
 add_subdirectory(src/core)
 
@@ -203,12 +206,20 @@ if(EMOTIVLSL_BUILD_EMOTIV)
     install(TARGETS emotiv_lsl
         RUNTIME DESTINATION "${INSTALL_BINDIR}"
     )
+    install(FILES src/emotiv/lsl_api.cfg DESTINATION "${INSTALL_BINDIR}")
     if(WIN32)
         install(TARGETS hidapi_winapi RUNTIME DESTINATION "${INSTALL_BINDIR}")
     elseif(APPLE)
         install(TARGETS hidapi_darwin LIBRARY DESTINATION "${INSTALL_BINDIR}")
     endif()
 endif()
+
+# Install xdfwriter
+install(TARGETS xdfwriter
+    RUNTIME DESTINATION "${INSTALL_BINDIR}"
+    LIBRARY DESTINATION "${INSTALL_LIBDIR}"
+    ARCHIVE DESTINATION "${INSTALL_LIBDIR}"
+)
 
 # Install config file
 set(_config_dest "${INSTALL_DATADIR}")
@@ -267,6 +278,15 @@ if(APPLE)
     if(LSLTEMPLATE_BUILD_CLI)
         LSL_codesign(
             TARGET "${PROJECT_NAME}CLI"
+            DESTINATION "${INSTALL_BINDIR}"
+            ENTITLEMENTS "${CMAKE_CURRENT_SOURCE_DIR}/app.entitlements"
+            FRAMEWORK "Frameworks/lsl.framework"
+        )
+    endif()
+
+    if(EMOTIVLSL_BUILD_EMOTIV)
+        LSL_codesign(
+            TARGET emotiv_lsl
             DESTINATION "${INSTALL_BINDIR}"
             ENTITLEMENTS "${CMAKE_CURRENT_SOURCE_DIR}/app.entitlements"
             FRAMEWORK "Frameworks/lsl.framework"

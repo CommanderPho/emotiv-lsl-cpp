@@ -4,6 +4,7 @@ add_library(lsltemplate_core STATIC
     src/LSLOutlet.cpp
     src/Config.cpp
     src/StreamThread.cpp
+    src/recording.cpp
 )
 
 target_include_directories(lsltemplate_core
@@ -16,6 +17,7 @@ target_link_libraries(lsltemplate_core
     PUBLIC
         LSL::lsl
         Threads::Threads
+        xdfwriter
 )
 
 # Alias for consistent naming
