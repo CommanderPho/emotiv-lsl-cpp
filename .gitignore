@@ -1,5 +1,6 @@
 ui_*.h
 /build*/
+/dist/
 /CMakeLists.txt.user
 /CMakeLists.json
 /.vs/
