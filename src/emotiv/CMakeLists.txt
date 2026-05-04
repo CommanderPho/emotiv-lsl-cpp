@@ -1,10 +1,17 @@
 # Emotiv LSL C++ Application
 # Streams EEG, motion, and electrode quality data from Emotiv EPOC X headset via LSL.
 
+if(WIN32)
+    enable_language(RC)
+endif()
+
 add_executable(emotiv_lsl
     main.cpp
+    lab_recorder_cfg.cpp
     emotiv_base.cpp
     emotiv_epoc_x.cpp
+    emotiv_lsl_log_config.cpp
+    shutdown_hooks.cpp
     "${tiny_aes_SOURCE_DIR}/aes.c"
 )
 
@@ -21,7 +28,8 @@ target_compile_definitions(emotiv_lsl PRIVATE
 )
 
 if(WIN32)
-    target_link_libraries(emotiv_lsl PRIVATE hidapi_winapi LSL::lsl xdfwriter LSLTemplate::core)
+    target_sources(emotiv_lsl PRIVATE emotiv_lsl.rc)
+    target_link_libraries(emotiv_lsl PRIVATE hidapi_winapi LSL::lsl xdfwriter LSLTemplate::core shell32)
 
     add_custom_command(TARGET emotiv_lsl POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
@@ -48,4 +56,20 @@ elseif(APPLE)
     target_link_libraries(emotiv_lsl PRIVATE hidapi_darwin LSL::lsl xdfwriter LSLTemplate::core)
 else()
     target_link_libraries(emotiv_lsl PRIVATE hidapi_libusb LSL::lsl xdfwriter LSLTemplate::core)
+endif()
+
+add_custom_command(TARGET emotiv_lsl POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/lsl_api.cfg"
+        $<TARGET_FILE_DIR:emotiv_lsl>
+    COMMENT "Copying lsl_api.cfg (quiet liblsl logging) for emotiv_lsl"
+)
+
+add_executable(lab_recorder_cfg_smoke
+    lab_recorder_cfg_smoke.cpp
+    lab_recorder_cfg.cpp
+)
+target_include_directories(lab_recorder_cfg_smoke PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+if(WIN32)
+    target_link_libraries(lab_recorder_cfg_smoke PRIVATE shell32)
 endif()

@@ -1,4 +1,7 @@
 #include "lsltemplate/Config.hpp"
+#include <chrono>
+#include <cstdlib>
+#include <ctime>
 #include <fstream>
 #include <sstream>
 #include <algorithm>
@@ -81,6 +84,28 @@ std::filesystem::path getConfigDirectory() {
 #endif
 }
 
+bool parse_bool_value(const std::string& v) {
+    std::string t = trim(v);
+    std::transform(t.begin(), t.end(), t.begin(),
+        [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return t == "1" || t == "true" || t == "yes" || t == "on";
+}
+
+void replace_placeholder(std::string& s, const std::string& key, const std::string& val) {
+    const std::string ph = "{" + key + "}";
+    for (size_t pos = 0; (pos = s.find(ph, pos)) != std::string::npos;) {
+        s.replace(pos, ph.size(), val);
+        pos += val.size();
+    }
+}
+
+void sanitize_relative_path_string(std::string& s) {
+    for (char& c : s) {
+        if (c == '\\' || c == ':' || c == '*' || c == '?' || c == '"' || c == '<' || c == '>' || c == '|')
+            c = '_';
+    }
+}
+
 } // anonymous namespace
 
 std::optional<AppConfig> ConfigManager::load(const std::filesystem::path& path) {
@@ -102,8 +127,8 @@ std::optional<AppConfig> ConfigManager::load(const std::filesystem::path& path) 
         }
 
         // Section header
-        if (line.front() == '[' && line.back() == ']') {
-            current_section = line.substr(1, line.size() - 2);
+        if (line.size() >= 2 && line.front() == '[' && line.back() == ']') {
+            current_section = trim(line.substr(1, line.size() - 2));
             continue;
         }
 
@@ -118,17 +143,30 @@ std::optional<AppConfig> ConfigManager::load(const std::filesystem::path& path) 
                 value = value.substr(1, value.size() - 2);
             }
 
-            // Map to config fields (customize for your application)
-            if (key == "name" || key == "stream_name") {
-                config.stream_name = value;
-            } else if (key == "type" || key == "stream_type") {
-                config.stream_type = value;
-            } else if (key == "channels" || key == "channel_count") {
-                config.channel_count = std::stoi(value);
-            } else if (key == "sample_rate" || key == "srate") {
-                config.sample_rate = std::stod(value);
-            } else if (key == "device" || key == "device_param") {
-                config.device_param = std::stoi(value);
+            if (current_section == "Stream") {
+                if (key == "name" || key == "stream_name") {
+                    config.stream_name = value;
+                } else if (key == "type" || key == "stream_type") {
+                    config.stream_type = value;
+                } else if (key == "channels" || key == "channel_count") {
+                    config.channel_count = std::stoi(value);
+                } else if (key == "sample_rate" || key == "srate") {
+                    config.sample_rate = std::stod(value);
+                }
+            } else if (current_section == "Device") {
+                if (key == "device" || key == "device_param") {
+                    config.device_param = std::stoi(value);
+                }
+            } else if (current_section == "Recording") {
+                if (key == "enabled") {
+                    config.recording_auto_enabled = parse_bool_value(value);
+                } else if (key == "directory") {
+                    config.recording_directory = value;
+                } else if (key == "filename_template") {
+                    config.recording_filename_template = value;
+                } else if (key == "basename") {
+                    config.recording_basename = value;
+                }
             }
         }
     }
@@ -151,6 +189,12 @@ bool ConfigManager::save(const AppConfig& config, const std::filesystem::path& p
     file << "\n";
     file << "[Device]\n";
     file << "device_param=" << config.device_param << "\n";
+    file << "\n";
+    file << "[Recording]\n";
+    file << "enabled=" << (config.recording_auto_enabled ? 1 : 0) << "\n";
+    file << "directory=" << config.recording_directory << "\n";
+    file << "filename_template=" << config.recording_filename_template << "\n";
+    file << "basename=" << config.recording_basename << "\n";
 
     return file.good();
 }
@@ -190,6 +234,64 @@ std::filesystem::path ConfigManager::findConfigFile(
     }
 
     return {};
+}
+
+std::filesystem::path ConfigManager::executableDirectory() {
+    return getExecutablePath();
+}
+
+std::optional<std::filesystem::path> ConfigManager::resolveRecordingOutputPath(
+    const AppConfig& config, const std::filesystem::path& exe_dir) {
+    if (!config.recording_auto_enabled) {
+        return std::nullopt;
+    }
+    const std::filesystem::path exe =
+        exe_dir.empty() ? std::filesystem::current_path() : exe_dir;
+    std::filesystem::path dir_path(config.recording_directory);
+    std::filesystem::path base = dir_path.is_absolute() ? dir_path : (exe / dir_path);
+
+    std::string name_part = config.recording_filename_template;
+    if (name_part.empty()) {
+        name_part = "{stream_name}_{date}_{time}.xdf";
+    }
+
+    const std::string basename_val =
+        config.recording_basename.empty() ? config.stream_name : config.recording_basename;
+
+    const auto now = std::chrono::system_clock::now();
+    const std::time_t tt = std::chrono::system_clock::to_time_t(now);
+    std::tm local_tm{};
+#if defined(_WIN32)
+    if (localtime_s(&local_tm, &tt) != 0) {
+        return std::nullopt;
+    }
+#else
+    if (localtime_r(&tt, &local_tm) == nullptr) {
+        return std::nullopt;
+    }
+#endif
+    char date_buf[32];
+    char time_buf[32];
+    if (std::strftime(date_buf, sizeof(date_buf), "%Y-%m-%d", &local_tm) == 0) {
+        return std::nullopt;
+    }
+    if (std::strftime(time_buf, sizeof(time_buf), "%H-%M-%S", &local_tm) == 0) {
+        return std::nullopt;
+    }
+
+    replace_placeholder(name_part, "stream_name", config.stream_name);
+    replace_placeholder(name_part, "basename", basename_val);
+    replace_placeholder(name_part, "date", std::string(date_buf));
+    replace_placeholder(name_part, "time", std::string(time_buf));
+    sanitize_relative_path_string(name_part);
+
+    std::filesystem::path out = base / name_part;
+    std::error_code ec;
+    std::filesystem::create_directories(out.parent_path(), ec);
+    if (ec) {
+        return std::nullopt;
+    }
+    return std::filesystem::absolute(out);
 }
 
 } // namespace lsltemplate

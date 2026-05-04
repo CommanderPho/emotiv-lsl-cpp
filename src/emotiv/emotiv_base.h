@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <string>
 #include <vector>
 #include <map>
@@ -27,6 +28,9 @@ public:
 
     void main_loop();
 
+    /** Request cooperative shutdown (Ctrl+C / SIGINT / SIGTERM / console close). Safe from signal handlers. */
+    void requestShutdown() noexcept;
+
 protected:
     int READ_SIZE = 32;
     std::string serial_number;
@@ -47,6 +51,7 @@ protected:
     virtual std::vector<uint8_t> get_crypto_key() = 0;
     virtual std::string get_lsl_source_id();
     hid_device* get_hid_device();
+    hid_device* find_open_emotiv_device();
 
     // LSL outlets
     lsl::stream_info add_lsl_outlet_info_common(lsl::stream_info& info);
@@ -64,4 +69,7 @@ protected:
 
     const std::vector<std::string> eeg_channel_names = {"AF3", "F7", "F3", "FC5", "T7", "P7", "O1", "O2", "P8", "T8", "FC6", "F4", "F8", "AF4"};
     std::vector<std::string> eeg_quality_channel_names() const;
+
+private:
+    std::atomic<bool> shutdown_requested_{false};
 };
