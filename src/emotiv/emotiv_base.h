@@ -1,6 +1,7 @@
 #pragma once
 
 #include <atomic>
+#include <chrono>
 #include <string>
 #include <vector>
 #include <map>
@@ -70,6 +71,13 @@ protected:
     const std::vector<std::string> eeg_channel_names = {"AF3", "F7", "F3", "FC5", "T7", "P7", "O1", "O2", "P8", "T8", "FC6", "F4", "F8", "AF4"};
     std::vector<std::string> eeg_quality_channel_names() const;
 
+    /** PhoPyLSLhelper EasyTimeSyncParsingMixin parity: wall UTC + lsl::local_clock() sync points embedded in stream desc. */
+    void addArbitraryTimeSyncPoint(const std::string& label, std::chrono::system_clock::time_point utc_wall, double lsl_local_offset_sec);
+    void captureCurrentArbitraryTimeSyncPoint(const std::string& label);
+    void captureStreamStartTimestamps();
+    void captureRecordingStartTimestamps();
+
 private:
     std::atomic<bool> shutdown_requested_{false};
+    std::map<std::string, std::pair<std::chrono::system_clock::time_point, double>> arbitrary_time_sync_points_;
 };

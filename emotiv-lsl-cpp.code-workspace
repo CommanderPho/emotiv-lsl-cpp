@@ -8,6 +8,15 @@
 		},
 		{
 			"path": "../lab-recorder-python"
+		},
+		{
+			"path": "../emotiv-lsl"
+		},
+		{
+			"path": "../PhoPyLSLhelper"
+		},
+		{
+			"path": "../PhoPyMNEHelper"
 		}
 	],
 	"settings": {}

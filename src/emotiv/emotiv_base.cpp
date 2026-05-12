@@ -9,16 +9,47 @@
 #include <filesystem>
 #include "recording.h"
 #include <cstdint>
+#include <ctime>
 
 namespace {
 constexpr auto kReconnectInterval = std::chrono::seconds(2);
 constexpr auto kDeviceWaitSlice = std::chrono::milliseconds(200);
 constexpr int kHidReadTimeoutMs = 500;
 constexpr auto kWaitingStatusInterval = std::chrono::seconds(4);
+
+/** Matches phopylslhelper.general_helpers.readable_dt_str for UTC (strftime "%Y-%m-%d %I:%M:%S %p"). */
+std::string readable_dt_str_utc(std::chrono::system_clock::time_point tp) {
+    using clock = std::chrono::system_clock;
+    const std::time_t tt = clock::to_time_t(tp);
+    std::tm tm{};
+#ifdef _WIN32
+    gmtime_s(&tm, &tt);
+#else
+    if (gmtime_r(&tt, &tm) == nullptr) {
+        return "1970-01-01 12:00:00 AM";
+    }
+#endif
+    const int hour24 = tm.tm_hour;
+    int hour12 = hour24 % 12;
+    if (hour12 == 0) {
+        hour12 = 12;
+    }
+    const char* ampm = (hour24 < 12) ? "AM" : "PM";
+    std::ostringstream oss;
+    oss << std::setfill('0') << std::setw(4) << (tm.tm_year + 1900) << '-' << std::setw(2) << (tm.tm_mon + 1) << '-' << std::setw(2) << tm.tm_mday << ' ' << std::setw(2) << hour12 << ':' << std::setw(2) << tm.tm_min << ':' << std::setw(2) << tm.tm_sec << ' ' << ampm;
+    return oss.str();
+}
+
+std::string lsl_offset_to_str(double v) {
+    std::ostringstream oss;
+    oss << std::setprecision(17) << std::defaultfloat << v;
+    return oss.str();
+}
 }
 
 EmotivBase::EmotivBase(bool enable_motion, bool enable_quality, const std::string& record_file)
     : enable_motion_data(enable_motion), enable_electrode_quality_stream(enable_quality), record_file(record_file) {
+    captureStreamStartTimestamps();
 }
 
 EmotivBase::~EmotivBase() {
@@ -100,9 +131,34 @@ hid_device* EmotivBase::get_hid_device() {
 lsl::stream_info EmotivBase::add_lsl_outlet_info_common(lsl::stream_info& info) {
     lsl::xml_element desc = info.desc();
     desc.append_child_value("manufacturer", "emotiv_lsl_cpp");
-    desc.append_child_value("version", "0.1.0");
+    desc.append_child_value("version", "0.2.0");
     desc.append_child_value("description", "Logged by the open-source tool 'emotiv_lsl' to record raw data from Emotiv headsets.");
+    lsl::xml_element ph = desc.append_child("phopylslhelper");
+    ph.append_child_value("version", "1.0.3");
+    for (const auto& kv : arbitrary_time_sync_points_) {
+        const std::string& label = kv.first;
+        ph.append_child_value(label + "_datetime", readable_dt_str_utc(kv.second.first));
+        ph.append_child_value(label + "_lsl_local_offset_seconds", lsl_offset_to_str(kv.second.second));
+    }
     return info;
+}
+
+void EmotivBase::addArbitraryTimeSyncPoint(const std::string& label, std::chrono::system_clock::time_point utc_wall, double lsl_local_offset_sec) {
+    arbitrary_time_sync_points_[label] = std::make_pair(utc_wall, lsl_local_offset_sec);
+}
+
+void EmotivBase::captureCurrentArbitraryTimeSyncPoint(const std::string& label) {
+    const double lsl = lsl::local_clock();
+    const std::chrono::system_clock::time_point utc = std::chrono::system_clock::now();
+    addArbitraryTimeSyncPoint(label, utc, lsl);
+}
+
+void EmotivBase::captureStreamStartTimestamps() {
+    captureCurrentArbitraryTimeSyncPoint("stream_start");
+}
+
+void EmotivBase::captureRecordingStartTimestamps() {
+    captureCurrentArbitraryTimeSyncPoint("recording_start");
 }
 
 std::vector<std::string> EmotivBase::eeg_quality_channel_names() const {
