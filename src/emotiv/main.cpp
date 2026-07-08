@@ -2,6 +2,7 @@
 #include <iostream>
 #include <optional>
 #include "emotiv_epoc_x.h"
+#include "emotiv_epoc_plus.h"
 #include "emotiv_lsl_log_config.h"
 #include "lab_recorder_cfg.h"
 #include "shutdown_hooks.h"
@@ -23,6 +24,8 @@ int main(int argc, char* argv[]) {
         bool enable_motion = true;
         std::string record_file = "";
         std::optional<std::filesystem::path> explicit_labrec_cfg;
+        bool use_epoc_plus = false;
+        bool fourteen_bit_mode = false;
 
         for (int i = 1; i < argc; ++i) {
             std::string arg = argv[i];
@@ -30,6 +33,10 @@ int main(int argc, char* argv[]) {
                 record_file = argv[++i];
             } else if ((arg == "-c" || arg == "--config") && i + 1 < argc) {
                 explicit_labrec_cfg = std::filesystem::path(argv[++i]);
+            } else if (arg == "--epocplus") {
+                use_epoc_plus = true;
+            } else if (arg == "--14bit") {
+                fourteen_bit_mode = true;
             }
         }
 
@@ -63,10 +70,17 @@ int main(int argc, char* argv[]) {
             std::cout << "Recording natively to XDF file: " << record_file << std::endl;
         }
 
-        EmotivEpocX epocX(enable_motion, enable_quality, record_file);
-
-        EmotivShutdownScope shutdown_scope(&epocX);
-        epocX.main_loop();
+        if (use_epoc_plus) {
+            std::cout << "Using Emotiv Epoc+ implementation" << (fourteen_bit_mode ? " (14-bit mode)" : " (16-bit mode)") << std::endl;
+            EmotivEpocPlus epocPlus(enable_quality, fourteen_bit_mode, record_file);
+            EmotivShutdownScope shutdown_scope(&epocPlus);
+            epocPlus.main_loop();
+        } else {
+            std::cout << "Using Emotiv Epoc X implementation" << std::endl;
+            EmotivEpocX epocX(enable_motion, enable_quality, record_file);
+            EmotivShutdownScope shutdown_scope(&epocX);
+            epocX.main_loop();
+        }
     } catch (const std::exception& e) {
         std::cerr << "Error: " << e.what() << std::endl;
         return 1;

@@ -9,7 +9,7 @@ add_executable(emotiv_lsl
     main.cpp
     lab_recorder_cfg.cpp
     emotiv_base.cpp
-    emotiv_epoc_x.cpp
+    emotiv_epoc_x.cpp emotiv_epoc_plus.cpp
     emotiv_lsl_log_config.cpp
     shutdown_hooks.cpp
     "${tiny_aes_SOURCE_DIR}/aes.c"

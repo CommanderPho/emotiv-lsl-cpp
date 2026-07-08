@@ -187,11 +187,8 @@ lsl::stream_info EmotivBase::get_lsl_outlet_electrode_quality_stream_info() {
     return info;
 }
 
-std::string EmotivBase::convertEPOC_PLUS(uint8_t value_1, uint8_t value_2) {
-    double edk_value = ((value_1 * 0.128205128205129) + 4201.02564096001) + ((value_2 - 128) * 32.82051289);
-    std::stringstream ss;
-    ss << std::fixed << std::setprecision(8) << edk_value;
-    return ss.str();
+double EmotivBase::convertEPOC_PLUS(uint8_t value_1, uint8_t value_2) {
+    return ((value_1 * 0.128205128205129) + 4201.02564096001) + ((value_2 - 128) * 32.82051289);
 }
 
 std::vector<double> EmotivBase::extractQualityValues(const std::vector<uint8_t>& data) {

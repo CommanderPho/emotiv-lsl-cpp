@@ -65,7 +65,7 @@ protected:
     virtual bool validate_data(const std::vector<uint8_t>& data) = 0;
 
     // Helpers
-    std::string convertEPOC_PLUS(uint8_t value_1, uint8_t value_2);
+    double convertEPOC_PLUS(uint8_t value_1, uint8_t value_2);
     std::vector<double> extractQualityValues(const std::vector<uint8_t>& data);
 
     const std::vector<std::string> eeg_channel_names = {"AF3", "F7", "F3", "FC5", "T7", "P7", "O1", "O2", "P8", "T8", "FC6", "F4", "F8", "AF4"};
