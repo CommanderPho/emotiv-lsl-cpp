@@ -143,10 +143,10 @@ EmotivData EmotivEpocX::decode_data(const std::vector<uint8_t>& data) {
 
     std::vector<double> packet_data;
     for (int i = 2; i < 16; i += 2) {
-        packet_data.push_back(std::stod(convertEPOC_PLUS(dec_data[i], dec_data[i+1]))); 
+        packet_data.push_back(convertEPOC_PLUS(dec_data[i], dec_data[i+1]));
     }
     for (size_t i = 18; i < dec_data.size(); i += 2) {
-        packet_data.push_back(std::stod(convertEPOC_PLUS(dec_data[i], dec_data[i+1]))); 
+        packet_data.push_back(convertEPOC_PLUS(dec_data[i], dec_data[i+1]));
     }
 
     if (packet_data.size() == 14) {
