@@ -50,9 +50,12 @@ emotiv-lsl-cpp/
 ### Prerequisites
 
 - CMake 3.28 or later
+- [Ninja](https://ninja-build.org/) (recommended; required for the `emotiv` preset)
 - A C++17 compatible compiler (MSVC, GCC, or Clang)
 - Git (for FetchContent to download dependencies automatically)
 - Qt6.8 (only required for the GUI build; pass `-DLSLTEMPLATE_BUILD_GUI=OFF` to skip)
+
+On macOS with Homebrew: `brew install cmake ninja`
 
 ### Installing Qt 6.8 on Ubuntu
 
@@ -87,13 +90,24 @@ Alternatively, build CLI-only with `-DLSLTEMPLATE_BUILD_GUI=OFF` to avoid the Qt
 git clone https://github.com/CommanderPho/emotiv-lsl-cpp.git
 cd emotiv-lsl-cpp
 
+# If reconfigure fails with a generator mismatch (Ninja vs Unix Makefiles), wipe and retry:
+#   rm -rf build
+
 # Configure — all dependencies (hidapi, liblsl, tiny-AES-c) are fetched automatically
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DLSLTEMPLATE_BUILD_GUI=OFF
+# Prefer -G Ninja so FetchContent subbuilds match the top-level generator.
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DLSLTEMPLATE_BUILD_GUI=OFF
 
 # Build
 cmake --build build --config Release --parallel
 
-# Install
+# Install (self-contained tree under build/install)
+cmake --install build --prefix build/install
+```
+
+Or use the preset (also pins Ninja):
+
+```bash
+cmake --workflow --preset emotiv
 cmake --install build --prefix build/install
 ```
 
@@ -110,12 +124,11 @@ cmake --install build --prefix build/install
 ### Emotiv-only Build (no Qt required)
 
 ```bash
-cmake -S . -B build -DLSLTEMPLATE_BUILD_GUI=OFF -DLSLTEMPLATE_BUILD_CLI=OFF
+cmake -S . -B build -G Ninja -DLSLTEMPLATE_BUILD_GUI=OFF -DLSLTEMPLATE_BUILD_CLI=OFF
 # Build
 cmake --build build --config Release --parallel
 # Install
 cmake --install build --prefix build/install
-
 ```
 
 ### liblsl Discovery Priority

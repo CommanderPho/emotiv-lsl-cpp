@@ -6,6 +6,7 @@
       "name": "emotiv",
       "displayName": "Emotiv LSL (Release, no Qt/CLI)",
       "description": "Builds only the emotiv_lsl target in Release mode. All deps fetched automatically.",
+      "generator": "Ninja",
       "binaryDir": "${sourceDir}/build",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
