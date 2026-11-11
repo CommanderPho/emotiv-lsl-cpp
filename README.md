@@ -146,9 +146,21 @@ For parallel development with liblsl:
 cmake -S . -B build -DLSL_SOURCE_DIR=/path/to/liblsl
 ```
 
+## Epoc X decode (Android-aligned)
+
+EEG decode mirrors EmotivPRO Android Mode 7 (EpocPlus LE16 + `getRawEegId` remap + ADC ÷7.8), matching the Python `emotiv-lsl` reference. Crypto uses the Version2 EpocXMode key schedule (XOR `0x55` → AES-128-ECB). V4/`findKey` is unsupported. Transport remains **USB HID only** (no BLE GATT stack). Motion decoding implements the Android 20-byte BE Q/ACC/MAG layout, but the motion LSL outlet defaults **off** until a real 20-byte HID report is confirmed.
+
+Offline checks (no headset):
+
+```bash
+cmake --build build --target test_epoc_x_decode
+ctest --test-dir build -R epoc_x_decode --output-on-failure
+# or: ./build/test_epoc_x_decode
+```
+
 ## Running the Emotiv LSL Server
 
-Connect your Emotiv headset dongle before running. The server will automatically locate the device, set up LSL outlets, and begin streaming EEG, motion, and electrode quality data.
+Connect your Emotiv headset dongle before running. The server will automatically locate the device, set up LSL outlets, and begin streaming EEG and electrode quality (motion stays gated off by default).
 
 **Windows (PowerShell):**
 ```powershell

@@ -20,7 +20,8 @@ int main(int argc, char* argv[]) {
     emotiv_set_lslapicfg_from_exe_dir();
     try {
         bool enable_quality = true;
-        bool enable_motion = true;
+        // Motion LSL stays off until a real 20-byte HID/BLE motion report is confirmed.
+        bool enable_motion = false;
         std::string record_file = "";
         std::optional<std::filesystem::path> explicit_labrec_cfg;
 

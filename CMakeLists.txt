@@ -162,6 +162,7 @@ endif()
 
 # Emotiv LSL application
 if(EMOTIVLSL_BUILD_EMOTIV)
+    enable_testing()
     add_subdirectory(src/emotiv)
 endif()
 

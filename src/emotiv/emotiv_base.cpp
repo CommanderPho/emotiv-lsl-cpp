@@ -188,6 +188,8 @@ lsl::stream_info EmotivBase::get_lsl_outlet_electrode_quality_stream_info() {
 }
 
 std::string EmotivBase::convertEPOC_PLUS(uint8_t value_1, uint8_t value_2) {
+    // Legacy CyKit string math ≈ little-endian uint16 / 7.8 (Android 16-bit ADC).
+    // Epoc X Mode-7 hot path uses explicit LE16 + /7.8 instead; kept for Epoc+.
     double edk_value = ((value_1 * 0.128205128205129) + 4201.02564096001) + ((value_2 - 128) * 32.82051289);
     std::stringstream ss;
     ss << std::fixed << std::setprecision(8) << edk_value;
@@ -196,7 +198,19 @@ std::string EmotivBase::convertEPOC_PLUS(uint8_t value_1, uint8_t value_2) {
 
 std::vector<double> EmotivBase::extractQualityValues(const std::vector<uint8_t>& data) {
     std::vector<double> q_vals(14, 0.0);
-    if (KeyModel == 1 || KeyModel == 2 || KeyModel == 5 || KeyModel == 6 || KeyModel == 8) {
+    if (KeyModel == 8) {
+        // Epoc X Mode-7 — Android EpocPlusMode CQ: word7 & 0x7f when type==0x10.
+        if (data.size() < 32) {
+            throw std::runtime_error("Mode-7 CQ needs 32-byte plaintext");
+        }
+        if ((data[1] & 0x7f) != 0x10) {
+            throw std::runtime_error("Mode-7 CQ requires EEG type 0x10");
+        }
+        const uint16_t w7 = static_cast<uint16_t>(data[2 + 2 * 7]) |
+                            (static_cast<uint16_t>(data[2 + 2 * 7 + 1]) << 8);
+        const double cq = static_cast<double>(w7 & 0x7f);
+        q_vals.assign(eeg_channel_names.size(), cq);
+    } else if (KeyModel == 1 || KeyModel == 2 || KeyModel == 5 || KeyModel == 6) {
         std::map<std::string, double> q_dict;
         q_dict["AF3"] = data[16] & 0xF;
         q_dict["F7"]  = (data[16] >> 4) & 0xF;
@@ -256,11 +270,11 @@ void EmotivBase::main_loop() {
         std::cout << std::endl;
 
         if (!record_file.empty() && !recorder) {
-            std::string base_id = get_lsl_source_id();
+            // Epoc X outlets use a shared source_id (Python parity); resolve by stream name.
             std::vector<std::string> watchfor = {
-                "source_id='" + base_id + "_EEG'",
-                "source_id='" + base_id + "_Motion'",
-                "source_id='" + base_id + "_Quality'"
+                "name='Epoc X'",
+                "name='Epoc X Motion'",
+                "name='Epoc X eQuality'",
             };
             std::map<std::string, int> syncOpt;
             recorder = std::make_unique<recording>(record_file, std::vector<lsl::stream_info>(), watchfor, syncOpt, true);

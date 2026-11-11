@@ -73,3 +73,28 @@ target_include_directories(lab_recorder_cfg_smoke PRIVATE ${CMAKE_CURRENT_SOURCE
 if(WIN32)
     target_link_libraries(lab_recorder_cfg_smoke PRIVATE shell32)
 endif()
+
+# Offline Mode-7 key/decode assertions (no headset).
+add_executable(test_epoc_x_decode
+    test_epoc_x_decode.cpp
+    emotiv_base.cpp
+    emotiv_epoc_x.cpp
+    "${tiny_aes_SOURCE_DIR}/aes.c"
+)
+target_include_directories(test_epoc_x_decode PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${tiny_aes_SOURCE_DIR}
+)
+target_compile_definitions(test_epoc_x_decode PRIVATE
+    CBC=0
+    CTR=0
+    ECB=1
+)
+if(WIN32)
+    target_link_libraries(test_epoc_x_decode PRIVATE hidapi_winapi LSL::lsl xdfwriter LSLTemplate::core shell32)
+elseif(APPLE)
+    target_link_libraries(test_epoc_x_decode PRIVATE hidapi_darwin LSL::lsl xdfwriter LSLTemplate::core)
+else()
+    target_link_libraries(test_epoc_x_decode PRIVATE hidapi_libusb LSL::lsl xdfwriter LSLTemplate::core)
+endif()
+add_test(NAME epoc_x_decode COMMAND test_epoc_x_decode)
