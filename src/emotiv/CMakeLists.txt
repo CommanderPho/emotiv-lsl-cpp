@@ -10,6 +10,7 @@ add_executable(emotiv_lsl
     lab_recorder_cfg.cpp
     emotiv_base.cpp
     emotiv_epoc_x.cpp
+    epocx_wire_replay.cpp
     emotiv_lsl_log_config.cpp
     shutdown_hooks.cpp
     "${tiny_aes_SOURCE_DIR}/aes.c"
@@ -79,6 +80,7 @@ add_executable(test_epoc_x_decode
     test_epoc_x_decode.cpp
     emotiv_base.cpp
     emotiv_epoc_x.cpp
+    epocx_wire_replay.cpp
     "${tiny_aes_SOURCE_DIR}/aes.c"
 )
 target_include_directories(test_epoc_x_decode PRIVATE
@@ -89,6 +91,7 @@ target_compile_definitions(test_epoc_x_decode PRIVATE
     CBC=0
     CTR=0
     ECB=1
+    EPOCX_TESTDATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/testdata"
 )
 if(WIN32)
     target_link_libraries(test_epoc_x_decode PRIVATE hidapi_winapi LSL::lsl xdfwriter LSLTemplate::core shell32)

@@ -68,6 +68,7 @@ public:
     bool validate_data(const std::vector<uint8_t>& data) override;
 
 protected:
+    void apply_replay_header(const EpocXWireHeader& header) override;
     std::string get_lsl_source_id() override;
 
     lsl::stream_info get_lsl_outlet_eeg_stream_info() override;

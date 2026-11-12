@@ -1,8 +1,10 @@
 #include <filesystem>
 #include <iostream>
+#include <memory>
 #include <optional>
 #include "emotiv_epoc_x.h"
 #include "emotiv_lsl_log_config.h"
+#include "epocx_wire_replay.h"
 #include "lab_recorder_cfg.h"
 #include "shutdown_hooks.h"
 #include "lsltemplate/Config.hpp"
@@ -24,6 +26,8 @@ int main(int argc, char* argv[]) {
         bool enable_motion = false;
         std::string record_file = "";
         std::optional<std::filesystem::path> explicit_labrec_cfg;
+        std::optional<std::filesystem::path> replay_path;
+        double replay_speed = 1.0;
 
         for (int i = 1; i < argc; ++i) {
             std::string arg = argv[i];
@@ -31,6 +35,10 @@ int main(int argc, char* argv[]) {
                 record_file = argv[++i];
             } else if ((arg == "-c" || arg == "--config") && i + 1 < argc) {
                 explicit_labrec_cfg = std::filesystem::path(argv[++i]);
+            } else if (arg == "--replay" && i + 1 < argc) {
+                replay_path = std::filesystem::path(argv[++i]);
+            } else if (arg == "--replay-speed" && i + 1 < argc) {
+                replay_speed = std::stod(argv[++i]);
             }
         }
 
@@ -65,6 +73,10 @@ int main(int argc, char* argv[]) {
         }
 
         EmotivEpocX epocX(enable_motion, enable_quality, record_file);
+        if (replay_path) {
+            auto wire = std::make_unique<EpocXWireReplay>(replay_path->string());
+            epocX.enable_wire_replay(std::move(wire), replay_speed);
+        }
 
         EmotivShutdownScope shutdown_scope(&epocX);
         epocX.main_loop();

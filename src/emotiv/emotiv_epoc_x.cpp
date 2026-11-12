@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 #include <stdexcept>
 
 namespace {
@@ -177,6 +178,12 @@ void EmotivEpocX::set_serial_source(const std::string& source) {
 
 void EmotivEpocX::set_eeg_resolution_bits(int bits) {
     eeg_resolution_bits_ = bits;
+}
+
+void EmotivEpocX::apply_replay_header(const EpocXWireHeader& header) {
+    set_serial_number(header.serial);
+    set_serial_source(header.serial_source);
+    set_eeg_resolution_bits(std::fabs(header.adc_div - kAdcDiv16Bit) < 0.01 ? 0x10 : 0x0E);
 }
 
 double EmotivEpocX::adc_div() const {

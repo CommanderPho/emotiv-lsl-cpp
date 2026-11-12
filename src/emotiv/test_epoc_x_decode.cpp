@@ -1,13 +1,19 @@
 /** Offline assertions for Epoc X Mode-7 key + decode (no headset required). */
 
 #include "emotiv_epoc_x.h"
+#include "epocx_wire_replay.h"
 
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
 #include <iostream>
+#include <memory>
 #include <string>
 #include <vector>
+
+#ifndef EPOCX_TESTDATA_DIR
+#define EPOCX_TESTDATA_DIR "."
+#endif
 
 extern "C" {
 #include "aes.h"
@@ -231,6 +237,28 @@ void test_no_cykit_gyro_heuristic() {
                 "type 0x20 in 32B is not motion");
 }
 
+void test_wire_fixture_replay() {
+    const std::string path = std::string(EPOCX_TESTDATA_DIR) + "/fixture_mode7.epocxwire";
+    EpocXWireReplay replay(path);
+    expect_true(replay.header().serial == "UD20221202006756", "fixture serial");
+    expect_true(replay.size() == 2, "fixture packet count");
+
+    EmotivEpocX hs(false, true, "");
+    hs.enable_wire_replay(std::make_unique<EpocXWireReplay>(path), 0.0);
+
+    // Serial already injected via enable_wire_replay; read packets separately.
+    EpocXWireReplay reader(path);
+    auto payload = reader.read(0.0);
+    expect_true(payload.size() == 32, "first payload 32B");
+    auto decoded = hs.decode_data(payload);
+    expect_true(decoded.has_eeg, "fixture has eeg");
+    expect_true(decoded.eeg_data.size() == 14, "14 ch");
+    expect_true(decoded.has_quality, "fixture has cq");
+    expect_near(decoded.quality_data[0], 0x2B, 1e-9, "fixture cq");
+    // First channel AF3 = 100 µV after quantize.
+    expect_near(decoded.eeg_data[0], round(100.0 * 7.8) / 7.8, 1e-9, "fixture AF3");
+}
+
 } // namespace
 
 int main() {
@@ -238,6 +266,7 @@ int main() {
     test_mode7_decode();
     test_motion_20();
     test_no_cykit_gyro_heuristic();
+    test_wire_fixture_replay();
 
     if (g_failures != 0) {
         std::cerr << g_failures << " assertion(s) failed" << std::endl;

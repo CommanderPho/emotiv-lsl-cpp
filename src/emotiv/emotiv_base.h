@@ -9,6 +9,8 @@
 #include <lsl_cpp.h>
 #include <hidapi.h>
 
+#include "epocx_wire_replay.h"
+
 extern "C" {
 #include "aes.h"
 }
@@ -32,6 +34,9 @@ public:
     /** Request cooperative shutdown (Ctrl+C / SIGINT / SIGTERM / console close). Safe from signal handlers. */
     void requestShutdown() noexcept;
 
+    /** Replace HID with a paced `.epocxwire` dump. Calls apply_replay_header(). */
+    void enable_wire_replay(std::unique_ptr<EpocXWireReplay> src, double speed = 1.0);
+
 protected:
     int READ_SIZE = 32;
     std::string serial_number;
@@ -45,6 +50,9 @@ protected:
     bool enable_motion_data = false;
     std::string record_file = "";
 
+    std::unique_ptr<EpocXWireReplay> replay_;
+    double replay_speed_ = 1.0;
+
     // Cryptography state
     struct AES_ctx ctx;
     bool ctx_initialized = false;
@@ -53,6 +61,9 @@ protected:
     virtual std::string get_lsl_source_id();
     hid_device* get_hid_device();
     hid_device* find_open_emotiv_device();
+
+    /** Subclasses inject serial / ADC from wire header before decrypt. */
+    virtual void apply_replay_header(const EpocXWireHeader& header);
 
     // LSL outlets
     lsl::stream_info add_lsl_outlet_info_common(lsl::stream_info& info);
@@ -78,6 +89,9 @@ protected:
     void captureRecordingStartTimestamps();
 
 private:
+    void main_loop_hid();
+    void main_loop_replay();
+
     std::atomic<bool> shutdown_requested_{false};
     std::map<std::string, std::pair<std::chrono::system_clock::time_point, double>> arbitrary_time_sync_points_;
 };

@@ -59,6 +59,19 @@ void EmotivBase::requestShutdown() noexcept {
     shutdown_requested_.store(true, std::memory_order_relaxed);
 }
 
+void EmotivBase::enable_wire_replay(std::unique_ptr<EpocXWireReplay> src, double speed) {
+    if (!src) {
+        throw std::runtime_error("enable_wire_replay requires a non-null source");
+    }
+    apply_replay_header(src->header());
+    replay_ = std::move(src);
+    replay_speed_ = speed;
+}
+
+void EmotivBase::apply_replay_header(const EpocXWireHeader& /*header*/) {
+    // Default: subclasses that need serial inject override this.
+}
+
 std::string EmotivBase::get_lsl_source_id() {
     std::vector<uint8_t> key = get_crypto_key();
     std::stringstream ss;
@@ -237,6 +250,106 @@ std::vector<double> EmotivBase::extractQualityValues(const std::vector<uint8_t>&
 }
 
 void EmotivBase::main_loop() {
+    if (replay_) {
+        main_loop_replay();
+        return;
+    }
+    main_loop_hid();
+}
+
+void EmotivBase::main_loop_replay() {
+    std::unique_ptr<lsl::stream_outlet> eeg_outlet;
+    std::unique_ptr<lsl::stream_outlet> motion_outlet;
+    std::unique_ptr<lsl::stream_outlet> eeg_quality_outlet;
+    std::unique_ptr<recording> recorder;
+
+    std::cout << "Replay mode (" << device_name << ")";
+    if (!serial_number.empty()) {
+        std::cout << " [serial: " << serial_number << "]";
+    }
+    std::cout << " speed=" << replay_speed_ << " packets=" << replay_->size() << std::endl;
+
+    if (!record_file.empty()) {
+        std::vector<std::string> watchfor = {
+            "name='Epoc X'",
+            "name='Epoc X Motion'",
+            "name='Epoc X eQuality'",
+        };
+        std::map<std::string, int> syncOpt;
+        recorder = std::make_unique<recording>(record_file, std::vector<lsl::stream_info>(), watchfor, syncOpt, true);
+    }
+
+    uint32_t packet_count = 0;
+    bool saw_streaming = false;
+
+    while (!shutdown_requested_.load(std::memory_order_relaxed)) {
+        std::vector<uint8_t> data = replay_->read(replay_speed_);
+        if (data.empty()) {
+            std::cout << "Replay finished after " << packet_count << " packet(s)" << std::endl;
+            break;
+        }
+        packet_count++;
+
+        if (!validate_data(data)) {
+            continue;
+        }
+
+        EmotivData result = decode_data(data);
+        const bool headset_stream = result.has_eeg || (result.has_motion && enable_motion_data);
+        if (headset_stream && !saw_streaming) {
+            saw_streaming = true;
+            std::cout << "Streaming:";
+            if (result.has_eeg) {
+                std::cout << " EEG";
+            }
+            if (result.has_motion && enable_motion_data) {
+                std::cout << " Motion";
+            }
+            std::cout << std::endl;
+            if (recorder) {
+                std::error_code ec;
+                std::filesystem::path abs_path = std::filesystem::absolute(record_file);
+                std::filesystem::path canon = std::filesystem::weakly_canonical(abs_path, ec);
+                std::cout << "XDF recording writing to: " << (ec ? abs_path.string() : canon.string()) << std::endl;
+            }
+        }
+
+        if (result.has_quality && enable_electrode_quality_stream) {
+            if (!eeg_quality_outlet) {
+                lsl::stream_info info = get_lsl_outlet_electrode_quality_stream_info();
+                eeg_quality_outlet = std::make_unique<lsl::stream_outlet>(info);
+                std::cout << "Set up EEG Sensor Quality outlet!" << std::endl;
+            }
+            eeg_quality_outlet->push_sample(result.quality_data);
+        }
+
+        if (result.has_motion && enable_motion_data) {
+            if (!has_motion_data) {
+                has_motion_data = true;
+            }
+            if (!motion_outlet) {
+                lsl::stream_info info = get_lsl_outlet_motion_stream_info();
+                motion_outlet = std::make_unique<lsl::stream_outlet>(info);
+                std::cout << "Set up motion outlet!" << std::endl;
+            }
+            motion_outlet->push_sample(result.motion_data);
+        } else if (result.has_eeg) {
+            if (!eeg_outlet) {
+                lsl::stream_info info = get_lsl_outlet_eeg_stream_info();
+                eeg_outlet = std::make_unique<lsl::stream_outlet>(info);
+                std::cout << "Set up EEG outlet! Channels: " << result.eeg_data.size() << std::endl;
+            }
+            eeg_outlet->push_sample(result.eeg_data);
+        }
+    }
+
+    if (recorder) {
+        recorder->requestStop();
+        recorder.reset();
+    }
+}
+
+void EmotivBase::main_loop_hid() {
     if (hid_init() != 0) {
         throw std::runtime_error("Failed to initialize hidapi");
     }

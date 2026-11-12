@@ -158,6 +158,19 @@ ctest --test-dir build -R epoc_x_decode --output-on-failure
 # or: ./build/test_epoc_x_decode
 ```
 
+### XDF → wire replay (no headset)
+
+Convert a LabRecorder `.xdf` with the Python helper in sibling `emotiv-lsl`, then replay through this binary (full decrypt/decode/LSL path, no USB):
+
+```bash
+# In ACTIVE_DEV/emotiv-lsl
+python scripts/xdf_to_epocx_wire.py recording.xdf -o recording.epocxwire
+
+# In emotiv-lsl-cpp
+./emotiv_lsl --replay recording.epocxwire
+./emotiv_lsl --replay recording.epocxwire --replay-speed 0 [--record out.xdf]
+```
+
 ## Running the Emotiv LSL Server
 
 Connect your Emotiv headset dongle before running. The server will automatically locate the device, set up LSL outlets, and begin streaming EEG and electrode quality (motion stays gated off by default).
