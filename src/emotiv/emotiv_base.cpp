@@ -2,6 +2,7 @@
 #include "config.h"
 #include <iostream>
 #include <iomanip>
+#include <fstream>
 #include <sstream>
 #include <stdexcept>
 #include <chrono>
@@ -9,6 +10,7 @@
 #include <filesystem>
 #include "recording.h"
 #include <cstdint>
+#include <cstdlib>
 #include <ctime>
 
 namespace {
@@ -282,6 +284,76 @@ void EmotivBase::main_loop_replay() {
     uint32_t packet_count = 0;
     bool saw_streaming = false;
 
+    // Advertise outlets before the first push so an XDF watcher / compare script can attach
+    // even when --replay-speed 0 finishes in milliseconds.
+    eeg_outlet = std::make_unique<lsl::stream_outlet>(get_lsl_outlet_eeg_stream_info());
+    std::cout << "Set up EEG outlet (replay prefetch)!" << std::endl;
+    if (enable_electrode_quality_stream) {
+        eeg_quality_outlet =
+            std::make_unique<lsl::stream_outlet>(get_lsl_outlet_electrode_quality_stream_info());
+        std::cout << "Set up EEG Sensor Quality outlet (replay prefetch)!" << std::endl;
+    }
+    if (enable_motion_data) {
+        motion_outlet = std::make_unique<lsl::stream_outlet>(get_lsl_outlet_motion_stream_info());
+        std::cout << "Set up motion outlet (replay prefetch)!" << std::endl;
+    }
+    // Optional compare-script handshake:
+    //   EMOTIV_REPLAY_OUTLETS_READY_FILE — created after outlets exist
+    //   EMOTIV_REPLAY_GO_FILE            — script creates this after inlets are linked
+    // Fallback: wait for have_consumers(), then a short settle.
+    {
+        const char* ready_path = std::getenv("EMOTIV_REPLAY_OUTLETS_READY_FILE");
+        const char* go_path = std::getenv("EMOTIV_REPLAY_GO_FILE");
+        if (ready_path && *ready_path && go_path && *go_path) {
+            {
+                std::ofstream ready(ready_path, std::ios::trunc);
+                ready << "ready\n";
+            }
+            std::cout << "Outlets ready; waiting for GO file: " << go_path << std::endl;
+            double go_timeout_s = 30.0;
+            if (const char* env_pre = std::getenv("EMOTIV_REPLAY_PREFETCH_SEC")) {
+                try {
+                    go_timeout_s = std::stod(env_pre);
+                } catch (...) {
+                }
+            }
+            const auto deadline =
+                std::chrono::steady_clock::now() + std::chrono::duration<double>(go_timeout_s);
+            while (std::chrono::steady_clock::now() < deadline
+                   && !shutdown_requested_.load(std::memory_order_relaxed)) {
+                if (std::filesystem::exists(go_path)) {
+                    std::cout << "GO file seen; starting replay push" << std::endl;
+                    break;
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(20));
+            }
+        } else {
+            double consumer_timeout_s = recorder ? 10.0 : 2.0;
+            if (const char* env_pre = std::getenv("EMOTIV_REPLAY_PREFETCH_SEC")) {
+                try {
+                    consumer_timeout_s = std::stod(env_pre);
+                } catch (...) {
+                }
+            }
+            const auto deadline =
+                std::chrono::steady_clock::now() + std::chrono::duration<double>(consumer_timeout_s);
+            std::cout << "Waiting up to " << consumer_timeout_s
+                      << "s for LSL consumer(s) before replay push" << std::endl;
+            while (std::chrono::steady_clock::now() < deadline
+                   && !shutdown_requested_.load(std::memory_order_relaxed)) {
+                const bool eeg_ready = eeg_outlet && eeg_outlet->have_consumers();
+                const bool q_ready =
+                    !enable_electrode_quality_stream
+                    || (eeg_quality_outlet && eeg_quality_outlet->have_consumers());
+                if (eeg_ready && q_ready) {
+                    std::cout << "LSL consumer(s) attached" << std::endl;
+                    break;
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            }
+        }
+    }
+
     while (!shutdown_requested_.load(std::memory_order_relaxed)) {
         std::vector<uint8_t> data = replay_->read(replay_speed_);
         if (data.empty()) {
@@ -314,12 +386,7 @@ void EmotivBase::main_loop_replay() {
             }
         }
 
-        if (result.has_quality && enable_electrode_quality_stream) {
-            if (!eeg_quality_outlet) {
-                lsl::stream_info info = get_lsl_outlet_electrode_quality_stream_info();
-                eeg_quality_outlet = std::make_unique<lsl::stream_outlet>(info);
-                std::cout << "Set up EEG Sensor Quality outlet!" << std::endl;
-            }
+        if (result.has_quality && enable_electrode_quality_stream && eeg_quality_outlet) {
             eeg_quality_outlet->push_sample(result.quality_data);
         }
 
@@ -327,19 +394,34 @@ void EmotivBase::main_loop_replay() {
             if (!has_motion_data) {
                 has_motion_data = true;
             }
-            if (!motion_outlet) {
-                lsl::stream_info info = get_lsl_outlet_motion_stream_info();
-                motion_outlet = std::make_unique<lsl::stream_outlet>(info);
-                std::cout << "Set up motion outlet!" << std::endl;
+            if (motion_outlet) {
+                motion_outlet->push_sample(result.motion_data);
             }
-            motion_outlet->push_sample(result.motion_data);
-        } else if (result.has_eeg) {
-            if (!eeg_outlet) {
-                lsl::stream_info info = get_lsl_outlet_eeg_stream_info();
-                eeg_outlet = std::make_unique<lsl::stream_outlet>(info);
-                std::cout << "Set up EEG outlet! Channels: " << result.eeg_data.size() << std::endl;
-            }
+        } else if (result.has_eeg && eeg_outlet) {
             eeg_outlet->push_sample(result.eeg_data);
+        }
+    }
+
+    // Keep outlets alive briefly so a late-attaching XDF watcher / compare script can latch.
+    // Set EMOTIV_REPLAY_HOLD_SEC (seconds). Default 2 when recording; 0 otherwise.
+    double hold_sec = 0.0;
+    if (const char* env_hold = std::getenv("EMOTIV_REPLAY_HOLD_SEC")) {
+        try {
+            hold_sec = std::stod(env_hold);
+        } catch (...) {
+            hold_sec = 0.0;
+        }
+    } else if (recorder) {
+        hold_sec = 2.0;
+    }
+    if (hold_sec > 0.0 && !shutdown_requested_.load(std::memory_order_relaxed)) {
+        std::cout << "Holding LSL outlets open for " << hold_sec << "s (replay compare / XDF latch)"
+                  << std::endl;
+        const auto until = std::chrono::steady_clock::now()
+            + std::chrono::duration<double>(hold_sec);
+        while (std::chrono::steady_clock::now() < until
+               && !shutdown_requested_.load(std::memory_order_relaxed)) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
         }
     }
 

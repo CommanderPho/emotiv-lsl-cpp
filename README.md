@@ -171,6 +171,22 @@ python scripts/xdf_to_epocx_wire.py recording.xdf -o recording.epocxwire
 ./emotiv_lsl --replay recording.epocxwire --replay-speed 0 [--record out.xdf]
 ```
 
+Prefer a live `python main.py --record session.epocxwire` gold file over XDF→wire when you need exact HID bytes.
+
+### Old live binaries without `--replay`
+
+Prefer the **hidapi shim** in sibling `emotiv-lsl` (`tools/hidapi_shim/`) over a virtual USB driver. It feeds `.epocxwire` REPORT bytes into process-local hidapi (serial / mfg / usage included) so an older `emotiv_lsl*.exe` can decrypt and stream to LabRecorder. See that folder’s README and `scripts/launch_hid_shim.py`.
+
+Compare LabRecorder XDF from a shimmed run against a Python 1× reference with `scripts/compare_xdfs.py`.
+
+### WinUHid (experimental / incomplete)
+
+[WinUHid](https://github.com/lurebat/WinUHid) is a **toy HID source** only — not the gold path for old-exe parity. VHF does not expose USB `iSerialNumber`, so hidapi `serial_number` is empty and AES keying fails unless you inject serial another way. Manufacturer-string matching is also incomplete. Prefer the hidapi shim (above) or in-process `--replay` on new builds.
+
+Dry-run feeder (no driver): from `emotiv-lsl`, `python scripts/feed_winuhid.py session.epocxwire --dry-run`. Full driver install needs VS 2022 + WDK (UMDF) and test-signing; see [WinUHid BUILDING.md](https://github.com/lurebat/WinUHid/blob/main/BUILDING.md).
+
+**Deferred:** Microsoft UDECX / USBIP gadgets if you later need Device Manager–visible full USB (not required for emotiv_lsl hidapi consumers).
+
 ## Running the Emotiv LSL Server
 
 Connect your Emotiv headset dongle before running. The server will automatically locate the device, set up LSL outlets, and begin streaming EEG and electrode quality (motion stays gated off by default).
