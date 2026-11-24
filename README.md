@@ -158,6 +158,14 @@ ctest --test-dir build -R epoc_x_decode --output-on-failure
 # or: ./build/test_epoc_x_decode
 ```
 
+Cross-client EEG/CQ sample parity (headset-emulator fixtures) lives in sibling **emotiv-lsl**:
+
+```bash
+# From ACTIVE_DEV/emotiv-lsl — offline always; C++ LSL compare when binary found
+EMOTIV_LSL_CPP=../emotiv-lsl-cpp/build/install/emotiv_lsl python -m tests.test_client_compat
+python -m tests.test_client_compat_inventory
+```
+
 ### XDF → wire replay (no headset)
 
 Convert a LabRecorder `.xdf` with the Python helper in sibling `emotiv-lsl`, then replay through this binary (full decrypt/decode/LSL path, no USB):
